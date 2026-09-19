@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 80" fill="none">
+  <!-- Leaf/Plant icon -->
+  <g transform="translate(5, 10)">
+    <path d="M25 55 C25 55 10 45 10 30 C10 15 25 5 40 5 C40 20 30 35 25 55Z" fill="#5b9a2d"/>
+    <path d="M30 55 C30 55 45 45 45 30 C45 15 30 5 15 5 C15 20 25 35 30 55Z" fill="#7ab84a" opacity="0.8"/>
+    <path d="M27.5 55 L27.5 20" stroke="#3d6b1e" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M27.5 35 C20 30 18 25 20 20" stroke="#3d6b1e" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+    <path d="M27.5 42 C35 37 37 32 35 27" stroke="#3d6b1e" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+  </g>
+
+  <!-- Egg shape accent -->
+  <ellipse cx="52" cy="50" rx="8" ry="10" fill="#d4a82a" opacity="0.3"/>
+
+  <!-- Text: La Ferme -->
+  <text x="70" y="32" font-family="Georgia, serif" font-size="18" font-weight="400" fill="#5c4a3a">
+    La Ferme
+  </text>
+
+  <!-- Text: du Vardier -->
+  <text x="70" y="58" font-family="Georgia, serif" font-size="26" font-weight="700" fill="#3d6b1e">
+    du Vardier
+  </text>
+
+  <!-- Decorative line -->
+  <line x1="70" y1="65" x2="200" y2="65" stroke="#d4a82a" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Small chicken silhouette -->
+  <g transform="translate(210, 45) scale(0.4)">
+    <path d="M30 35 C25 35 20 30 20 25 C20 20 25 15 30 15 C32 15 34 16 35 18 L38 15 L36 20 L40 18 L37 22 C38 24 38 27 37 30 L45 35 L35 35 L35 45 L30 45 L30 35Z" fill="#d4a82a"/>
+    <circle cx="28" cy="22" r="1.5" fill="#5c4a3a"/>
+  </g>
+</svg>

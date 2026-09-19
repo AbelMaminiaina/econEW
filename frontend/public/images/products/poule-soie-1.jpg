@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400">
+  <rect fill="#dcfce7" width="400" height="400"/>
+  <ellipse fill="#fff" cx="200" cy="220" rx="100" ry="90" stroke="#e7e5e4" stroke-width="3"/>
+  <ellipse fill="#fff" cx="200" cy="135" rx="55" ry="55" stroke="#e7e5e4" stroke-width="3"/>
+  <ellipse fill="#f5f5f4" cx="200" cy="100" rx="40" ry="30"/>
+  <circle fill="#1c1917" cx="182" cy="140" r="5"/>
+  <polygon fill="#57534e" points="200,155 210,167 190,167"/>
+  <text fill="#166534" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle" x="200" y="380">Poule Soie Blanche</text>
+</svg>

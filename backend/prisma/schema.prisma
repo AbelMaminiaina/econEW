@@ -1,0 +1,328 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Catégories de produits (table dynamique)
+model Category {
+  id          String    @id @default(uuid())
+  name        String    // Nom affiché (ex: "Quincaillerie")
+  slug        String    @unique // Identifiant URL (ex: "quincaillerie")
+  description String?
+  image       String?
+  order       Int       @default(0) // Ordre d'affichage
+  isActive    Boolean   @default(true)
+
+  products    Product[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("categories")
+}
+
+// Badges des produits
+enum ProductBadge {
+  bio
+  plein_air
+  nouveau
+  promo
+  populaire
+}
+
+// Statut d'un compte professionnel
+enum CompanyStatus {
+  pending
+  approved
+  rejected
+  suspended
+}
+
+// Rôle d'un utilisateur
+enum UserRole {
+  platform_admin
+  company_admin
+  buyer
+  customer // Particulier (achat au détail, sans entreprise)
+}
+
+// Conditions de paiement différé accordées à une entreprise
+enum PaymentTerms {
+  net_30
+  net_60
+}
+
+// Statut d'une facture
+enum InvoiceStatus {
+  sent
+  paid
+  overdue
+  cancelled
+}
+
+// Compte professionnel (grossiste acheteur)
+model Company {
+  id               String        @id @default(uuid())
+  name             String
+  legalName        String?
+  taxId            String        @unique
+  status           CompanyStatus @default(pending)
+  paymentTerms     PaymentTerms?
+  creditLimit      Int?          // Plafond de crédit en Ariary
+  contactEmail     String
+  contactPhone     String?
+  rejectionReason  String?
+
+  users            User[]
+  addresses        Address[]
+  orders           Order[]
+  invoices         Invoice[]
+
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@map("companies")
+}
+
+// Utilisateur (rattaché à une entreprise, sauf le staff plateforme)
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  phone        String?
+  role         UserRole
+
+  companyId    String?
+  company      Company?  @relation(fields: [companyId], references: [id])
+
+  addresses    Address[]
+  orders       Order[]
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@map("users")
+}
+
+// Palier de prix dégressif par quantité (au-delà de minQty, le prix unitaire devient unitPrice)
+model PriceTier {
+  id        String  @id @default(uuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  minQty    Int
+  unitPrice Int     // Prix unitaire en Ariary à partir de minQty
+
+  @@index([productId, minQty])
+  @@map("price_tiers")
+}
+
+// Produits
+model Product {
+  id               String           @id @default(uuid())
+  name             String
+  slug             String           @unique
+  category         String           // Slug de catégorie (underscores), libre — voir table Category
+  categoryId       String?          // Nouvelle relation
+  categoryRef      Category?        @relation(fields: [categoryId], references: [id])
+  description      String
+  shortDescription String
+  price            Int              // Prix unitaire de base en Ariary (avant paliers)
+  originalPrice    Int?             // Prix original (pour les promos)
+  images           String[]
+  inStock          Boolean          @default(true)
+  stockQuantity    Int              @default(0)
+  isActive         Boolean          @default(true)  // Masquer du catalogue sans supprimer
+  badges           ProductBadge[]
+  characteristics  String[]
+
+  // Vente en gros
+  moq               Int             @default(1)      // Quantité minimum de commande
+  unit              String          @default("piece") // Unité de vente (piece, carton, palette, kg...)
+  priceTiers        PriceTier[]
+
+  // Logistique
+  estimatedWeightKg Float?          // Poids estimé indicatif — n'entre JAMAIS dans le calcul du prix
+  freeShipping      Boolean         @default(false) // Si true, la commande contenant ce produit est livrée gratuitement
+  availableFrom     DateTime?       // Date de disponibilité — avant cette date le client peut réserver (précommande)
+
+  // Metadata libre (accessoires, etc.)
+  dimensions       String?
+  weight           String?
+
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  orderItems       OrderItem[]
+
+  @@map("products")
+}
+
+// Clients (historique B2C — conservé en lecture seule, plus utilisé pour les nouvelles commandes)
+model Customer {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  firstName String
+  lastName  String
+  phone     String?
+
+  addresses Address[]
+  orders    Order[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("customers")
+}
+
+// Adresses
+model Address {
+  id         String   @id @default(uuid())
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  companyId  String?
+  company    Company?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  street     String
+  city       String
+  postalCode String
+  country    String  @default("Madagascar")
+  isDefault  Boolean @default(false)
+
+  orders     Order[]
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("addresses")
+}
+
+// Statut des commandes
+enum OrderStatus {
+  pending
+  confirmed
+  processing
+  shipped
+  delivered
+  cancelled
+}
+
+// Méthode de livraison
+enum DeliveryMethod {
+  standard
+  express
+  retrait
+}
+
+// Commandes
+model Order {
+  id             String         @id @default(uuid())
+  orderNumber    String         @unique
+
+  // Historique B2C (conservé, plus utilisé pour les nouvelles commandes)
+  customerId     String?
+  customer       Customer?      @relation(fields: [customerId], references: [id])
+
+  // Commandes B2B
+  companyId      String?
+  company        Company?       @relation(fields: [companyId], references: [id])
+  userId         String?
+  user           User?          @relation(fields: [userId], references: [id])
+
+  addressId      String?
+  address        Address?       @relation(fields: [addressId], references: [id])
+
+  status         OrderStatus    @default(pending)
+  deliveryMethod DeliveryMethod
+
+  subtotal       Int            // Prix en Ariary
+  shippingCost   Int            // Prix en Ariary
+  total          Int            // Prix en Ariary
+
+  paymentTerms   PaymentTerms?  // Conditions de paiement figées au moment de la commande
+  dueDate        DateTime?      // Échéance de paiement (facturation différée)
+
+  notes          String?
+  cancelReason   String?
+
+  items          OrderItem[]
+  invoice        Invoice?
+
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@map("orders")
+}
+
+// Items de commande
+model OrderItem {
+  id        String  @id @default(uuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  quantity  Int
+  price     Int       // Prix unitaire en Ariary au moment de la commande (résolu depuis les paliers)
+  availableFrom DateTime? // Date de disponibilité du produit figée au moment de la commande (réservation / précommande)
+
+  createdAt DateTime @default(now())
+
+  @@map("order_items")
+}
+
+// Facture (paiement différé net-30 / net-60)
+model Invoice {
+  id            String        @id @default(uuid())
+  invoiceNumber String        @unique
+  orderId       String        @unique
+  order         Order         @relation(fields: [orderId], references: [id])
+  companyId     String
+  company       Company       @relation(fields: [companyId], references: [id])
+
+  amount        Int           // Montant en Ariary
+  issueDate     DateTime      @default(now())
+  dueDate       DateTime
+  status        InvoiceStatus @default(sent)
+  paidAt        DateTime?
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@map("invoices")
+}
+
+// Newsletter
+model NewsletterSubscriber {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  isActive  Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("newsletter_subscribers")
+}
+
+// Messages de contact
+model ContactMessage {
+  id        String   @id @default(uuid())
+  name      String
+  email     String
+  phone     String?
+  subject   String
+  message   String
+  isRead    Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@map("contact_messages")
+}

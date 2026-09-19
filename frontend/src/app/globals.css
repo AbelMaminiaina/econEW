@@ -1,0 +1,209 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Échelle d'espacement et de typographie partagée : les sections l'utilisent pour rester alignées. */
+:root {
+  --space-gutter: 1rem;
+  --space-stack: 1.5rem;
+  --space-section: clamp(4rem, 8vw, 6rem);
+  --text-h2: clamp(1.875rem, 3.5vw, 2.5rem);
+  --text-lead: 1.125rem;
+  --radius-control: 0.5rem;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --duration-fast: 150ms;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-cream-50 text-warm-800 antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  ::selection {
+    @apply bg-prairie-200 text-prairie-900;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-warm-100;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-warm-300 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-warm-400;
+  }
+}
+
+@layer components {
+  .container {
+    @apply max-w-7xl;
+  }
+
+  .section-y {
+    padding-block: var(--space-section);
+  }
+
+  .heading-2 {
+    font-size: var(--text-h2);
+    line-height: 1.15;
+  }
+
+  .lead {
+    font-size: var(--text-lead);
+    line-height: 1.7;
+  }
+
+  .stack > * + * {
+    margin-top: var(--space-stack);
+  }
+
+  /* Prose styles for blog content */
+  .prose {
+    @apply text-warm-700 leading-relaxed;
+  }
+
+  .prose h1 {
+    @apply text-3xl font-display font-bold text-warm-800 mt-8 mb-4;
+  }
+
+  .prose h2 {
+    @apply text-2xl font-display font-bold text-warm-800 mt-8 mb-4;
+  }
+
+  .prose h3 {
+    @apply text-xl font-semibold text-warm-800 mt-6 mb-3;
+  }
+
+  .prose p {
+    @apply mb-4;
+  }
+
+  .prose ul {
+    @apply list-disc list-inside mb-4 space-y-2;
+  }
+
+  .prose ol {
+    @apply list-decimal list-inside mb-4 space-y-2;
+  }
+
+  .prose li {
+    @apply text-warm-700;
+  }
+
+  .prose a {
+    @apply text-prairie-600 hover:text-prairie-700 underline;
+  }
+
+  .prose blockquote {
+    @apply border-l-4 border-prairie-300 pl-4 italic text-warm-600 my-4;
+  }
+
+  .prose code {
+    @apply bg-warm-100 px-2 py-1 rounded text-sm;
+  }
+
+  .prose pre {
+    @apply bg-warm-800 text-warm-100 p-4 rounded-lg overflow-x-auto my-4;
+  }
+
+  .prose img {
+    @apply rounded-lg shadow-md my-6;
+  }
+
+  .prose hr {
+    @apply border-warm-200 my-8;
+  }
+
+  .prose strong {
+    @apply text-warm-800 font-semibold;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+    /* Fallback for Safari */
+    @supports not (text-wrap: balance) {
+      text-wrap: wrap;
+    }
+  }
+
+  /* Safari backdrop-filter support */
+  .backdrop-blur-md {
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+  }
+
+  .backdrop-blur-sm {
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+  }
+
+  .animate-in {
+    animation: animate-in 0.5s ease-out;
+  }
+
+  @keyframes animate-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Hide scrollbar for carousel */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Line clamp utilities */
+  .line-clamp-1 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
+
+  .line-clamp-2 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .line-clamp-3 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+  }
+}
+
+/* Font faces */
+@font-face {
+  font-family: 'Playfair Display';
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url('/fonts/PlayfairDisplay-VariableFont.woff2') format('woff2');
+}

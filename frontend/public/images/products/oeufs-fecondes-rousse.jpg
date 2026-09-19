@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400">
+  <rect fill="#fef9c3" width="400" height="400"/>
+  <ellipse fill="#DEB887" cx="200" cy="200" rx="80" ry="100"/>
+  <text fill="#78350f" font-family="sans-serif" font-size="12" font-weight="bold" text-anchor="middle" x="200" y="195">FÉCONDÉ</text>
+  <text fill="#78350f" font-family="sans-serif" font-size="10" text-anchor="middle" x="200" y="215">Rousse</text>
+  <text fill="#78350f" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle" x="200" y="380">Œufs Fécondés Rousse</text>
+</svg>

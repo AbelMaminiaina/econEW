@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400">
+  <rect fill="#dcfce7" width="400" height="400"/>
+  <rect fill="#8B4513" x="80" y="150" width="240" height="180"/>
+  <polygon fill="#78350f" points="50,150 350,150 200,60"/>
+  <rect fill="#44403c" x="150" y="230" width="60" height="100"/>
+  <rect fill="#fef3c7" x="250" y="180" width="50" height="40"/>
+  <text fill="#166534" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle" x="200" y="380">Poulailler 4-6 Poules</text>
+</svg>

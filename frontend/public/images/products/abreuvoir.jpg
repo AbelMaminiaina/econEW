@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400">
+  <rect fill="#e0f2fe" width="400" height="400"/>
+  <ellipse fill="#3b82f6" cx="200" cy="280" rx="80" ry="20"/>
+  <rect fill="#dc2626" x="170" y="120" width="60" height="160"/>
+  <ellipse fill="#dc2626" cx="200" cy="120" rx="30" ry="10"/>
+  <text fill="#0369a1" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle" x="200" y="380">Abreuvoir 5L</text>
+</svg>

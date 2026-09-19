@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400">
+  <rect fill="#bbf7d0" width="400" height="400"/>
+  <ellipse fill="#f97316" cx="200" cy="200" rx="60" ry="50"/>
+  <ellipse fill="#ea580c" cx="200" cy="160" rx="30" ry="25"/>
+  <polygon fill="#DC2626" points="200,135 210,155 190,155"/>
+  <circle fill="#000" cx="190" cy="155" r="4"/>
+  <text fill="#166534" font-family="sans-serif" font-size="14" text-anchor="middle" x="200" y="380">Poule en liberté</text>
+</svg>

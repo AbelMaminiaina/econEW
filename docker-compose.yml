@@ -1,0 +1,73 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: ecommerce-b2b-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ecommerce_b2b
+      POSTGRES_PASSWORD: b2bpostgres123
+      POSTGRES_DB: ecommerce_b2b
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5436:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ecommerce_b2b -d ecommerce_b2b"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ecommerce-b2b-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: ecommerce-b2b-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass b2bredis123
+    ports:
+      - "6382:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "b2bredis123", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ecommerce-b2b-network
+
+  # pgAdmin (for database management)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: ecommerce-b2b-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@ecommerce-b2b.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5052:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ecommerce-b2b-network
+
+volumes:
+  postgres_data:
+    name: ecommerce-b2b-postgres-data
+  redis_data:
+    name: ecommerce-b2b-redis-data
+  pgadmin_data:
+    name: ecommerce-b2b-pgadmin-data
+
+networks:
+  ecommerce-b2b-network:
+    name: ecommerce-b2b-network
+    driver: bridge

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450">
+  <rect fill="#fef9c3" width="800" height="450"/>
+  <ellipse fill="#fff" cx="400" cy="200" rx="120" ry="150"/>
+  <ellipse fill="#f59e0b" cx="400" cy="200" rx="50" ry="50"/>
+  <rect fill="#78350f" x="200" y="350" width="400" height="30" rx="5"/>
+  <text fill="#78350f" font-family="sans-serif" font-size="24" font-weight="bold" text-anchor="middle" x="400" y="420">Recettes aux Œufs</text>
+</svg>

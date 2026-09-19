@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400">
+  <rect fill="#fef9c3" width="400" height="400"/>
+  <ellipse fill="#fcd34d" cx="150" cy="200" rx="30" ry="15"/>
+  <ellipse fill="#f59e0b" cx="200" cy="180" rx="25" ry="12"/>
+  <ellipse fill="#fbbf24" cx="250" cy="210" rx="28" ry="14"/>
+  <ellipse fill="#d97706" cx="180" cy="240" rx="20" ry="10"/>
+  <ellipse fill="#fcd34d" cx="220" cy="260" rx="25" ry="12"/>
+  <text fill="#78350f" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle" x="200" y="380">Mélange Céréales Bio</text>
+</svg>
