@@ -8,9 +8,9 @@ export function OrganizationJsonLd() {
     name: 'All',
     alternateName: 'All B2B',
     url: 'https://all.mg',
-    logo: 'https://all.mg/images/logo.png',
+    logo: 'https://all.mg/icon.svg',
     description:
-      'All est une plateforme de vente en gros pour professionnels à Madagascar : tarifs dégressifs, facturation à 30/60 jours, livraison à Antananarivo.',
+      'All est une plateforme de vente en gros pour professionnels à Madagascar : tarifs dégressifs, paiement par Mobile Money, livraison à Antananarivo.',
     address: {
       '@type': 'PostalAddress',
       streetAddress: 'LE 187',
@@ -46,9 +46,9 @@ export function LocalBusinessJsonLd() {
     '@type': 'LocalBusiness',
     '@id': 'https://all.mg/#localbusiness',
     name: 'All',
-    image: 'https://all.mg/images/logo.png',
+    image: 'https://all.mg/icon.svg',
     description:
-      'Plateforme de vente en gros pour professionnels à Madagascar : catalogue multi-catégories, tarifs dégressifs par quantité, facturation à 30/60 jours.',
+      'Plateforme de vente en gros pour professionnels à Madagascar : catalogue multi-catégories, tarifs dégressifs par quantité, paiement par Mobile Money.',
     url: 'https://all.mg',
     email: 'contact@all.mg',
     address: {
@@ -80,7 +80,7 @@ export function LocalBusinessJsonLd() {
     ],
     priceRange: '$$',
     currenciesAccepted: 'MGA',
-    paymentAccepted: 'Bank transfer, Net 30, Net 60',
+    paymentAccepted: 'MVola, Orange Money, Airtel Money',
   };
 
   return (
@@ -213,7 +213,7 @@ export function WebsiteJsonLd() {
     name: 'All',
     url: 'https://all.mg',
     description:
-      'Plateforme de vente en gros pour professionnels à Madagascar - tarifs dégressifs, facturation à 30/60 jours.',
+      'Plateforme de vente en gros pour professionnels à Madagascar - tarifs dégressifs, paiement par Mobile Money.',
     inLanguage: 'fr-MG',
     potentialAction: {
       '@type': 'SearchAction',

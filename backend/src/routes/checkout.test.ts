@@ -29,6 +29,9 @@ import { SHIPPING_COSTS, FREE_SHIPPING_THRESHOLD } from '../lib/shipping.js';
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
+process.env.PAYMENT_MVOLA_NUMBER = '034 00 000 00';
+process.env.PAYMENT_ACCOUNT_NAME = 'All';
+
 const adminToken = signToken({ userId: 'admin1', role: 'platform_admin', companyId: null });
 const buyerToken = signToken({ userId: 'buyer1', role: 'buyer', companyId: 'c1' });
 const customerToken = signToken({ userId: 'cust1', role: 'customer', companyId: null });
@@ -63,13 +66,13 @@ const validPayload = {
     postalCode: '101',
   },
   deliveryMethod: 'standard' as const,
+  paymentMethod: 'mvola' as const,
 };
 
 function mockApprovedCompany(overrides: Partial<any> = {}) {
   prismaMock.company.findUnique.mockResolvedValue({
     id: 'c1',
     status: 'approved',
-    paymentTerms: 'net_30',
     name: 'Grossiste Test',
     contactEmail: 'contact@test.example',
     contactPhone: null,
@@ -85,13 +88,21 @@ function mockHappyPath({ stockQuantity = 10 }: { stockQuantity?: number } = {}) 
   ] as any);
   prismaMock.address.create.mockResolvedValue({ id: 'addr1', street: '12 rue des Champs', city: 'Antananarivo', postalCode: '101', country: 'Madagascar' } as any);
   prismaMock.order.create.mockResolvedValue({ id: 'order1', orderNumber: 'ORD-TEST', items: [] } as any);
-  prismaMock.invoice.create.mockResolvedValue({ id: 'inv1', invoiceNumber: 'INV-TEST', dueDate: new Date() } as any);
   prismaMock.product.update.mockResolvedValue({} as any);
 }
 
 describe('POST /api/checkout', () => {
-  it('rejects an unauthenticated request', async () => {
+  it('asks a visitor without account for their contact details', async () => {
     const res = await request(buildApp()).post('/api/checkout').send(validPayload);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('coordonnées');
+  });
+
+  it('still rejects an invalid token', async () => {
+    const res = await request(buildApp())
+      .post('/api/checkout')
+      .set({ Authorization: 'Bearer nimportequoi' })
+      .send(validPayload);
     expect(res.status).toBe(401);
   });
 
@@ -109,7 +120,7 @@ describe('POST /api/checkout', () => {
     const res = await request(buildApp())
       .post('/api/checkout')
       .set(buyerAuth)
-      .send({ items: [], deliveryMethod: 'standard' });
+      .send({ items: [], deliveryMethod: 'standard', paymentMethod: 'mvola' });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('Données invalides');
@@ -121,7 +132,7 @@ describe('POST /api/checkout', () => {
     const res = await request(buildApp())
       .post('/api/checkout')
       .set(buyerAuth)
-      .send({ items: [{ productId: 'p1', quantity: 1 }], deliveryMethod: 'standard' });
+      .send({ items: [{ productId: 'p1', quantity: 1 }], deliveryMethod: 'standard', paymentMethod: 'mvola' });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/[Aa]dresse/);
@@ -136,7 +147,7 @@ describe('POST /api/checkout', () => {
     const res = await request(buildApp())
       .post('/api/checkout')
       .set(buyerAuth)
-      .send({ items: [{ productId: 'p1', quantity: 5 }], deliveryMethod: 'retrait' });
+      .send({ items: [{ productId: 'p1', quantity: 5 }], deliveryMethod: 'retrait', paymentMethod: 'mvola' });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/[Qq]uantité minimum/);
@@ -149,7 +160,6 @@ describe('POST /api/checkout', () => {
     ] as any);
     prismaMock.address.create.mockResolvedValue({ id: 'addr1' } as any);
     prismaMock.order.create.mockResolvedValue({ id: 'order1', orderNumber: 'ORD-TEST', items: [] } as any);
-    prismaMock.invoice.create.mockResolvedValue({ id: 'inv1', invoiceNumber: 'INV-TEST', dueDate: new Date() } as any);
     prismaMock.product.update.mockResolvedValue({} as any);
 
     const res = await request(buildApp())
@@ -159,6 +169,7 @@ describe('POST /api/checkout', () => {
         items: [{ productId: 'p1', quantity: 150, price: 1 }], // le "price" client, s'il existe, est ignoré
         shippingAddress: validPayload.shippingAddress,
         deliveryMethod: 'standard',
+        paymentMethod: 'mvola',
       });
 
     expect(res.status).toBe(200);
@@ -167,13 +178,13 @@ describe('POST /api/checkout', () => {
     expect(orderCreateArgs.data.subtotal).toBe(150_000);
   });
 
-  it('computes subtotal, shipping cost and total, and marks the order processing when stock is available', async () => {
+  it('computes subtotal, shipping cost and total, and creates the order awaiting payment with stock reserved', async () => {
     mockHappyPath();
 
     const res = await request(buildApp()).post('/api/checkout').set(buyerAuth).send(validPayload);
 
     expect(res.status).toBe(200);
-    expect(res.body.status).toBe('processing');
+    expect(res.body.status).toBe('pending');
     // subtotal = 15000*2 + 5000*1 = 35000 (below the free-shipping threshold) → standard flat rate
     expect(res.body.total).toBe(35000 + SHIPPING_COSTS.standard);
 
@@ -181,23 +192,64 @@ describe('POST /api/checkout', () => {
     expect(orderCreateArgs.data.subtotal).toBe(35000);
     expect(orderCreateArgs.data.shippingCost).toBe(SHIPPING_COSTS.standard);
     expect(orderCreateArgs.data.total).toBe(35000 + SHIPPING_COSTS.standard);
-    expect(orderCreateArgs.data.status).toBe('processing');
+    expect(orderCreateArgs.data.status).toBe('pending');
+    expect(orderCreateArgs.data.paymentMethod).toBe('mvola');
+    expect(orderCreateArgs.data.paymentStatus).toBe('awaiting');
+    expect(orderCreateArgs.data.stockReserved).toBe(true);
     expect(orderCreateArgs.data.companyId).toBe('c1');
     expect(orderCreateArgs.data.userId).toBe('buyer1');
-    expect(orderCreateArgs.data.paymentTerms).toBe('net_30');
+    expect(orderCreateArgs.data.paymentTerms).toBeUndefined();
   });
 
-  it('creates an invoice alongside the order', async () => {
+  it('returns the Mobile Money payment instructions with the total to pay', async () => {
     mockHappyPath();
 
     const res = await request(buildApp()).post('/api/checkout').set(buyerAuth).send(validPayload);
 
     expect(res.status).toBe(200);
-    expect(res.body.invoiceNumber).toBe('INV-TEST');
-    const invoiceCreateArgs = prismaMock.invoice.create.mock.calls[0][0] as any;
-    expect(invoiceCreateArgs.data.companyId).toBe('c1');
-    expect(invoiceCreateArgs.data.orderId).toBe('order1');
-    expect(invoiceCreateArgs.data.amount).toBe(35000 + SHIPPING_COSTS.standard);
+    expect(res.body.payment).toEqual({
+      method: 'mvola',
+      label: 'MVola',
+      number: '034 00 000 00',
+      accountName: 'All',
+      totalAmount: 35000 + SHIPPING_COSTS.standard,
+    });
+    expect(prismaMock.invoice.create).not.toHaveBeenCalled();
+  });
+
+  it('requires a payment method (no deferred or on-delivery payment)', async () => {
+    mockHappyPath();
+    const { paymentMethod: _omit, ...withoutPayment } = validPayload;
+
+    const res = await request(buildApp()).post('/api/checkout').set(buyerAuth).send(withoutPayment);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Données invalides');
+    expect(prismaMock.order.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a payment method whose merchant number is not configured', async () => {
+    mockHappyPath();
+
+    const res = await request(buildApp())
+      .post('/api/checkout')
+      .set(buyerAuth)
+      .send({ ...validPayload, paymentMethod: 'airtel_money' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('moyen de paiement');
+    expect(prismaMock.order.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects the removed payment methods (deferred, on delivery)', async () => {
+    mockHappyPath();
+
+    const res = await request(buildApp())
+      .post('/api/checkout')
+      .set(buyerAuth)
+      .send({ ...validPayload, paymentMethod: 'net_30' });
+
+    expect(res.status).toBe(400);
   });
 
   it('applies free shipping once the subtotal reaches the free-shipping threshold', async () => {
@@ -207,7 +259,6 @@ describe('POST /api/checkout', () => {
     ] as any);
     prismaMock.address.create.mockResolvedValue({ id: 'addr1' } as any);
     prismaMock.order.create.mockResolvedValue({ id: 'order1', orderNumber: 'ORD-TEST', items: [] } as any);
-    prismaMock.invoice.create.mockResolvedValue({ id: 'inv1', invoiceNumber: 'INV-TEST', dueDate: new Date() } as any);
     prismaMock.product.update.mockResolvedValue({} as any);
 
     const res = await request(buildApp())
@@ -219,13 +270,14 @@ describe('POST /api/checkout', () => {
     expect(res.body.total).toBe(FREE_SHIPPING_THRESHOLD);
   });
 
-  it('marks the order pending and skips stock decrement when stock is insufficient', async () => {
+  it('keeps the order pending without reserving stock when stock is insufficient', async () => {
     mockHappyPath({ stockQuantity: 0 });
 
     const res = await request(buildApp()).post('/api/checkout').set(buyerAuth).send(validPayload);
 
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('pending');
+    expect((prismaMock.order.create.mock.calls[0][0] as any).data.stockReserved).toBe(false);
     expect(prismaMock.product.update).not.toHaveBeenCalled();
   });
 
@@ -279,6 +331,7 @@ describe('POST /api/checkout (particulier)', () => {
     items: [{ productId: 'p1', quantity: 50 }],
     shippingAddress: { street: '12 rue', city: 'Tana', postalCode: '101' },
     deliveryMethod: 'standard' as const,
+    paymentMethod: 'mvola' as const,
   };
 
   it('enforces the MOQ for a customer too (vente en gros)', async () => {
@@ -308,20 +361,20 @@ describe('POST /api/checkout (particulier)', () => {
     expect(args.data.subtotal).toBe(60_000);
   });
 
-  it('creates no invoice and no payment terms for a customer, and links order and address to the user', async () => {
+  it('creates no invoice for a customer, and links order and address to the user', async () => {
     mockCustomerHappyPath();
 
     const res = await request(buildApp()).post('/api/checkout').set(customerAuth).send(payload);
 
     expect(res.status).toBe(200);
-    expect(res.body.invoiceNumber).toBeNull();
+    expect(res.body.invoiceNumber).toBeUndefined();
     expect(prismaMock.invoice.create).not.toHaveBeenCalled();
     expect(prismaMock.company.findUnique).not.toHaveBeenCalled();
     const orderArgs = prismaMock.order.create.mock.calls[0][0] as any;
     expect(orderArgs.data.companyId).toBeNull();
     expect(orderArgs.data.userId).toBe('cust1');
-    expect(orderArgs.data.paymentTerms).toBeNull();
-    expect(orderArgs.data.dueDate).toBeNull();
+    expect(orderArgs.data.paymentTerms).toBeUndefined();
+    expect(orderArgs.data.dueDate).toBeUndefined();
     const addressArgs = prismaMock.address.create.mock.calls[0][0] as any;
     expect(addressArgs.data.userId).toBe('cust1');
     expect(addressArgs.data.companyId).toBeUndefined();
@@ -394,6 +447,8 @@ describe('PATCH /api/checkout/orders/:orderId/status', () => {
     prismaMock.order.findUnique.mockResolvedValue({
       id: 'o1',
       status: 'processing',
+      paymentStatus: 'paid',
+      stockReserved: true,
       items: [{ productId: 'p1', quantity: 2 }],
       ...overrides,
     } as any);
@@ -409,7 +464,6 @@ describe('PATCH /api/checkout/orders/:orderId/status', () => {
       company: { name: 'Grossiste Test', contactEmail: 'contact@test.example' },
       customer: null,
       address: { street: '12 rue des Champs', city: 'Antananarivo', postalCode: '101', country: 'Madagascar' },
-      invoice: null,
       items: [{ quantity: 2, price: 15000, product: { name: 'Produit 1' } }],
       ...overrides,
     } as any);
@@ -458,19 +512,62 @@ describe('PATCH /api/checkout/orders/:orderId/status', () => {
     expect(res.body.order.status).toBe('shipped');
   });
 
-  it('cancels the linked invoice when the order is cancelled', async () => {
-    mockExistingOrder();
-    mockUpdatedOrder({ status: 'cancelled', invoice: { id: 'inv1', status: 'sent' } });
+  it('refuses to advance an order whose payment is not confirmed', async () => {
+    mockExistingOrder({ status: 'pending', paymentStatus: 'submitted' });
 
-    await request(buildApp())
+    const res = await request(buildApp())
       .patch('/api/checkout/orders/o1/status')
       .set(adminAuth)
-      .send({ status: 'cancelled', reason: 'Rupture de stock' });
+      .send({ status: 'shipped' });
 
-    expect(prismaMock.invoice.update).toHaveBeenCalledWith({
-      where: { id: 'inv1' },
-      data: { status: 'cancelled' },
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('paiement');
+    expect(prismaMock.order.update).not.toHaveBeenCalled();
+  });
+
+  it('still allows cancelling an unpaid order', async () => {
+    mockExistingOrder({ status: 'pending', paymentStatus: 'awaiting', stockReserved: false });
+    mockUpdatedOrder({ status: 'cancelled' });
+
+    const res = await request(buildApp())
+      .patch('/api/checkout/orders/o1/status')
+      .set(adminAuth)
+      .send({ status: 'cancelled', reason: 'Non payée' });
+
+    expect(res.status).toBe(200);
+  });
+
+  it('reserves the stock when a paid order that was out of stock advances', async () => {
+    mockExistingOrder({ status: 'pending', stockReserved: false });
+    prismaMock.product.findMany.mockResolvedValue([{ id: 'p1', name: 'Produit 1', stockQuantity: 5 }] as any);
+    prismaMock.product.update.mockResolvedValue({} as any);
+    mockUpdatedOrder({ status: 'processing' });
+
+    const res = await request(buildApp())
+      .patch('/api/checkout/orders/o1/status')
+      .set(adminAuth)
+      .send({ status: 'processing' });
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.product.update).toHaveBeenCalledWith({
+      where: { id: 'p1' },
+      data: { stockQuantity: { decrement: 2 } },
     });
+    expect((prismaMock.order.update.mock.calls[0][0] as any).data.stockReserved).toBe(true);
+  });
+
+  it('refuses to advance a paid order when the stock is still insufficient', async () => {
+    mockExistingOrder({ status: 'pending', stockReserved: false });
+    prismaMock.product.findMany.mockResolvedValue([{ id: 'p1', name: 'Produit 1', stockQuantity: 1 }] as any);
+
+    const res = await request(buildApp())
+      .patch('/api/checkout/orders/o1/status')
+      .set(adminAuth)
+      .send({ status: 'processing' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('Stock insuffisant');
+    expect(prismaMock.order.update).not.toHaveBeenCalled();
   });
 
   it('restores stock for every item when cancelling a processing order', async () => {
@@ -496,8 +593,8 @@ describe('PATCH /api/checkout/orders/:orderId/status', () => {
     });
   });
 
-  it('does not restore stock when cancelling a pending order (stock was never decremented)', async () => {
-    mockExistingOrder({ status: 'pending' });
+  it('does not restore stock when cancelling an order whose stock was never reserved', async () => {
+    mockExistingOrder({ status: 'pending', stockReserved: false });
     mockUpdatedOrder({ status: 'cancelled' });
 
     await request(buildApp())
@@ -545,5 +642,189 @@ describe('GET /api/checkout/:orderNumber', () => {
     const res = await request(buildApp()).get('/api/checkout/ORD-1').set(adminAuth);
 
     expect(res.status).toBe(200);
+  });
+});
+
+describe('POST /api/checkout (multi-vendeurs)', () => {
+  const productRow = (id: string, extra: Partial<any> = {}) => ({
+    id,
+    name: `Produit ${id}`,
+    price: 100000,
+    moq: 10,
+    unit: 'piece',
+    stockQuantity: 100,
+    freeShipping: false,
+    availableFrom: null,
+    priceTiers: [],
+    status: 'approved',
+    isActive: true,
+    sellerId: null,
+    seller: null,
+    ...extra,
+  });
+
+  function mockOrders() {
+    mockApprovedCompany();
+    prismaMock.address.create.mockResolvedValue({ id: 'addr1', street: 'r', city: 'Tana', postalCode: '101', country: 'Madagascar' } as any);
+    let n = 0;
+    prismaMock.order.create.mockImplementation((async () => ({ id: `order${++n}`, orderNumber: `ORD-${n}`, items: [] })) as any);
+    prismaMock.product.update.mockResolvedValue({} as any);
+  }
+
+  const payload = {
+    items: [
+      { productId: 'pA', quantity: 10 },
+      { productId: 'pB', quantity: 10 },
+      { productId: 'pC', quantity: 10 },
+    ],
+    shippingAddress: { street: 'r', city: 'Tana', postalCode: '101' },
+    deliveryMethod: 'standard' as const,
+    paymentMethod: 'mvola' as const,
+  };
+
+  it('scinde le panier en une commande par vendeur', async () => {
+    mockOrders();
+    prismaMock.product.findMany.mockResolvedValue([
+      productRow('pA', { sellerId: 's1', seller: { id: 's1', name: 'Vendeur 1', status: 'approved' } }),
+      productRow('pB', { sellerId: 's1', seller: { id: 's1', name: 'Vendeur 1', status: 'approved' } }),
+      productRow('pC'),
+    ] as any);
+
+    const res = await request(buildApp()).post('/api/checkout').set(buyerAuth).send(payload);
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.order.create).toHaveBeenCalledTimes(2);
+    const created = prismaMock.order.create.mock.calls.map((c) => (c[0] as any).data);
+    expect(created.map((d) => d.sellerId).sort()).toEqual([null, 's1']);
+    expect(new Set(created.map((d) => d.checkoutGroup)).size).toBe(1);
+    expect(res.body.orders).toHaveLength(2);
+    expect(res.body.orders.map((o: any) => o.sellerName)).toEqual(expect.arrayContaining([null, 'Vendeur 1']));
+    // Livraison offerte sur chaque commande (au-dessus du seuil) : le total est la somme des commandes
+    expect(res.body.total).toBe(3_000_000);
+    // Un seul paiement pour tout le panier
+    expect(res.body.payment.totalAmount).toBe(3_000_000);
+    expect(vi.mocked(sendOrderConfirmationEmail).mock.calls.every((c) => c[0].payment?.totalToPay === 3_000_000)).toBe(true);
+  });
+
+  it('calcule la livraison séparément pour chaque vendeur', async () => {
+    mockOrders();
+    prismaMock.product.findMany.mockResolvedValue([
+      productRow('pA', { price: 5000, sellerId: 's1', seller: { id: 's1', name: 'V1', status: 'approved' } }),
+      productRow('pB', { price: 5000, sellerId: 's2', seller: { id: 's2', name: 'V2', status: 'approved' } }),
+    ] as any);
+
+    await request(buildApp())
+      .post('/api/checkout')
+      .set(buyerAuth)
+      .send({ ...payload, items: [{ productId: 'pA', quantity: 10 }, { productId: 'pB', quantity: 10 }] });
+
+    const created = prismaMock.order.create.mock.calls.map((c) => (c[0] as any).data);
+    expect(created.map((d) => d.shippingCost)).toEqual([SHIPPING_COSTS.standard, SHIPPING_COSTS.standard]);
+  });
+
+  it('refuse un produit non validé ou désactivé', async () => {
+    mockOrders();
+    prismaMock.product.findMany.mockResolvedValue([productRow('pA', { status: 'pending' })] as any);
+
+    const res = await request(buildApp())
+      .post('/api/checkout')
+      .set(buyerAuth)
+      .send({ ...payload, items: [{ productId: 'pA', quantity: 10 }] });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('plus disponible');
+    expect(prismaMock.order.create).not.toHaveBeenCalled();
+  });
+
+  it("refuse un produit dont le vendeur n'est plus approuvé", async () => {
+    mockOrders();
+    prismaMock.product.findMany.mockResolvedValue([
+      productRow('pA', { sellerId: 's1', seller: { id: 's1', name: 'V1', status: 'suspended' } }),
+    ] as any);
+
+    const res = await request(buildApp())
+      .post('/api/checkout')
+      .set(buyerAuth)
+      .send({ ...payload, items: [{ productId: 'pA', quantity: 10 }] });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("interdit à une entreprise d'acheter son propre produit", async () => {
+    mockOrders();
+    prismaMock.product.findMany.mockResolvedValue([
+      productRow('pA', { sellerId: 'c1', seller: { id: 'c1', name: 'Moi', status: 'approved' } }),
+    ] as any);
+
+    const res = await request(buildApp())
+      .post('/api/checkout')
+      .set(buyerAuth)
+      .send({ ...payload, items: [{ productId: 'pA', quantity: 10 }] });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('votre propre produit');
+  });
+
+  it('applique la quantité minimum de gros aussi aux particuliers', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ id: 'cust1', firstName: 'A', lastName: 'B', email: 'a@b.mg', phone: null } as any);
+    prismaMock.product.findMany.mockResolvedValue([productRow('pA')] as any);
+
+    const res = await request(buildApp())
+      .post('/api/checkout')
+      .set(customerAuth)
+      .send({ ...payload, items: [{ productId: 'pA', quantity: 3 }] });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('Quantité minimum');
+  });
+});
+
+describe('PATCH /api/checkout/orders/:orderId/status (vendeur)', () => {
+  const sellerToken = signToken({ userId: 'u9', role: 'company_admin', companyId: 'seller1' });
+  const sellerAuth = { Authorization: `Bearer ${sellerToken}` };
+
+  it('autorise le vendeur propriétaire de la commande', async () => {
+    prismaMock.order.findUnique.mockResolvedValue({ id: 'o1', status: 'processing', paymentStatus: 'paid', stockReserved: true, sellerId: 'seller1', items: [] } as any);
+    prismaMock.order.update.mockResolvedValue({
+      id: 'o1', orderNumber: 'ORD', status: 'shipped', total: 1, deliveryMethod: 'standard',
+      company: { name: 'X', contactEmail: 'x@x.mg' }, customer: null, address: null, items: [],
+    } as any);
+
+    const res = await request(buildApp())
+      .patch('/api/checkout/orders/o1/status')
+      .set(sellerAuth)
+      .send({ status: 'shipped' });
+
+    expect(res.status).toBe(200);
+  });
+
+  it("refuse un vendeur qui n'est pas celui de la commande", async () => {
+    prismaMock.order.findUnique.mockResolvedValue({ id: 'o1', status: 'processing', sellerId: 'autre', items: [] } as any);
+
+    const res = await request(buildApp())
+      .patch('/api/checkout/orders/o1/status')
+      .set(sellerAuth)
+      .send({ status: 'shipped' });
+
+    expect(res.status).toBe(403);
+    expect(prismaMock.order.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/checkout/orders/seller', () => {
+  it("liste les commandes reçues par l'entreprise vendeuse", async () => {
+    const token = signToken({ userId: 'u9', role: 'company_admin', companyId: 'seller1' });
+    prismaMock.company.findUnique.mockResolvedValue({ id: 'seller1', status: 'approved' } as any);
+    prismaMock.order.findMany.mockResolvedValue([]);
+
+    const res = await request(buildApp()).get('/api/checkout/orders/seller').set({ Authorization: `Bearer ${token}` });
+
+    expect(res.status).toBe(200);
+    expect((prismaMock.order.findMany.mock.calls[0][0] as any).where).toEqual({ sellerId: 'seller1' });
+  });
+
+  it('refuse un particulier', async () => {
+    const res = await request(buildApp()).get('/api/checkout/orders/seller').set(customerAuth);
+    expect(res.status).toBe(403);
   });
 });

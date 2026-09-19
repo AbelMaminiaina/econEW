@@ -26,10 +26,14 @@ interface OrderData {
   shippingCost: number;
   total: number;
   status: string;
-  // Absents pour un particulier : pas de facture différée, paiement à la livraison/retrait
-  invoiceNumber?: string;
-  dueDate?: Date;
-  paymentTerms?: 'net_30' | 'net_60';
+  // Instructions de paiement Mobile Money (le paiement est obligatoire pour toute commande)
+  payment?: {
+    methodLabel: string;
+    number: string;
+    accountName: string;
+    /** Montant total à envoyer (somme des commandes d'un même panier) */
+    totalToPay: number;
+  };
   createdAt: Date;
 }
 
@@ -59,9 +63,7 @@ interface CompanyDecisionEmailData {
   contactEmail: string;
 }
 
-interface CompanyApprovedEmailData extends CompanyDecisionEmailData {
-  paymentTerms: 'net_30' | 'net_60';
-}
+type CompanyApprovedEmailData = CompanyDecisionEmailData;
 
 interface CompanyRejectedEmailData extends CompanyDecisionEmailData {
   reason?: string;
@@ -71,11 +73,6 @@ const deliveryLabels: Record<string, string> = {
   standard: 'Livraison standard (3-5 jours)',
   express: 'Livraison express (1-2 jours)',
   retrait: 'Retrait sur place',
-};
-
-const paymentTermsLabels: Record<string, string> = {
-  net_30: '30 jours',
-  net_60: '60 jours',
 };
 
 // Nom de la plateforme, affiché dans les e-mails
@@ -201,29 +198,35 @@ function generateCustomerEmailHTML(order: OrderData): string {
         </table>
       </div>
 
-      <!-- Invoice / payment terms notice -->
-      ${order.invoiceNumber && order.dueDate && order.paymentTerms ? `
-      <div style="background-color: #eff6ff; border: 2px solid #2c5282; padding: 20px; margin-bottom: 25px; border-radius: 12px;">
+      <!-- Payment instructions -->
+      ${order.payment ? `
+      <div style="background-color: #fff7ed; border: 2px solid #f28b00; padding: 20px; margin-bottom: 25px; border-radius: 12px;">
         <div style="text-align: center; margin-bottom: 15px;">
-          <span style="font-size: 40px;">🧾</span>
-          <h3 style="margin: 10px 0 5px 0; color: #1e3a5f;">Facture ${order.invoiceNumber}</h3>
-          <p style="margin: 0; color: #1e3a5f; font-size: 14px;">Paiement à ${paymentTermsLabels[order.paymentTerms]}, échéance le ${formatDateOnly(order.dueDate)}</p>
+          <span style="font-size: 40px;">📱</span>
+          <h3 style="margin: 10px 0 5px 0; color: #9a3412;">Paiement par ${order.payment.methodLabel}</h3>
+          <p style="margin: 0; color: #9a3412; font-size: 14px;">Votre commande sera traitée dès que votre paiement aura été vérifié.</p>
         </div>
 
         <div style="background-color: white; border-radius: 8px; padding: 15px; text-align: center;">
-          <p style="margin: 0 0 5px 0; color: #666; font-size: 12px;">MONTANT DE LA FACTURE</p>
-          <p style="margin: 0; font-size: 28px; font-weight: bold; color: #1e3a5f;">${formatPrice(order.total)}</p>
+          <p style="margin: 0 0 5px 0; color: #666; font-size: 12px;">MONTANT À ENVOYER</p>
+          <p style="margin: 0; font-size: 28px; font-weight: bold; color: #9a3412;">${formatPrice(order.payment.totalToPay)}</p>
         </div>
 
         <div style="background-color: white; border-radius: 8px; padding: 15px; margin-top: 10px; text-align: center;">
-          <p style="margin: 0 0 5px 0; color: #666; font-size: 12px;">ÉCHÉANCE</p>
-          <p style="margin: 0; font-size: 20px; font-weight: bold; color: #333;">${formatDateOnly(order.dueDate)}</p>
+          <p style="margin: 0 0 5px 0; color: #666; font-size: 12px;">NUMÉRO ${order.payment.methodLabel.toUpperCase()}</p>
+          <p style="margin: 0; font-size: 22px; font-weight: bold; color: #333;">${order.payment.number}</p>
+          <p style="margin: 5px 0 0 0; color: #666; font-size: 13px;">Bénéficiaire : ${order.payment.accountName}</p>
         </div>
+
+        <p style="margin: 15px 0 0 0; color: #7c2d12; font-size: 13px; text-align: center;">
+          Après l'envoi, saisissez la <strong>référence de la transaction</strong> sur la page de paiement de votre commande
+          (lien « Suivi de commande » du site).
+        </p>
       </div>
       ` : `
-      <div style="background-color: #eff6ff; border: 2px solid #2c5282; padding: 20px; margin-bottom: 25px; border-radius: 12px; text-align: center;">
-        <h3 style="margin: 0 0 5px 0; color: #1e3a5f;">Montant à régler : ${formatPrice(order.total)}</h3>
-        <p style="margin: 0; color: #1e3a5f; font-size: 14px;">Paiement à la livraison ou au retrait de votre commande</p>
+      <div style="background-color: #fff7ed; border: 2px solid #f28b00; padding: 20px; margin-bottom: 25px; border-radius: 12px; text-align: center;">
+        <h3 style="margin: 0 0 5px 0; color: #9a3412;">Montant à régler : ${formatPrice(order.total)}</h3>
+        <p style="margin: 0; color: #9a3412; font-size: 14px;">Paiement par Mobile Money</p>
       </div>
       `}
 
@@ -343,7 +346,7 @@ function generateAdminNotificationHTML(order: OrderData): string {
       </tr>
       <tr>
         <td style="padding: 8px 0; border-bottom: 1px solid #f0f0f0;"><strong>Paiement:</strong></td>
-        <td style="padding: 8px 0; border-bottom: 1px solid #f0f0f0;">${order.invoiceNumber && order.dueDate ? `Facture ${order.invoiceNumber} — échéance ${formatDateOnly(order.dueDate)}` : 'À la livraison / au retrait'}</td>
+        <td style="padding: 8px 0; border-bottom: 1px solid #f0f0f0;">${order.payment ? `${order.payment.methodLabel} — en attente de vérification` : 'Mobile Money'}</td>
       </tr>
       <tr>
         <td style="padding: 8px 0;"><strong>Date:</strong></td>
@@ -647,7 +650,6 @@ function generateCompanyApprovedHTML(data: CompanyApprovedEmailData): string {
       <div style="font-size: 50px; margin-bottom: 15px;">✅</div>
       <h2 style="margin: 0; color: #16a34a;">Votre compte professionnel est approuvé !</h2>
       <p style="margin: 15px 0; color: #666;">Bonjour ${data.companyName}, vous pouvez désormais consulter nos tarifs et passer commande.</p>
-      <p style="margin: 15px 0; color: #333;">Conditions de paiement accordées : <strong>${paymentTermsLabels[data.paymentTerms]}</strong></p>
     </div>
   </div>
 </body>
@@ -706,12 +708,12 @@ export async function sendOrderConfirmationEmail(order: OrderData): Promise<bool
     const transporter = createTransporter();
     const customerHTML = generateCustomerEmailHTML(order);
 
-    const statusText = order.status === 'processing' ? 'Confirmée' : 'En attente';
+    const statusText = 'En attente de paiement';
 
     await transporter.sendMail({
       from: `"${BRAND_NAME}" <${process.env.SMTP_USER}>`,
       to: order.contactEmail,
-      subject: `✅ Commande ${order.orderNumber} - ${statusText}${order.invoiceNumber ? ` (Facture ${order.invoiceNumber})` : ''}`,
+      subject: `✅ Commande ${order.orderNumber} - ${statusText}`,
       html: customerHTML,
     });
 
@@ -876,6 +878,94 @@ export async function sendCompanyRejectedEmail(data: CompanyRejectedEmailData): 
     return true;
   } catch (error) {
     console.error('Error sending company rejection email:', error);
+    return false;
+  }
+}
+
+interface PaymentEmailData {
+  orderNumbers: string[];
+  companyName: string;
+  contactEmail: string;
+  totalAmount: number;
+}
+
+interface PaymentRejectedEmailData extends PaymentEmailData {
+  reason: string;
+}
+
+function paymentEmailShell(title: string, color: string, icon: string, body: string): string {
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>${title}</title></head>
+<body style="font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <div style="background-color: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+    <div style="text-align: center; padding: 30px; background: ${color}; color: white;">
+      <h1 style="margin: 0; font-size: 26px;">${BRAND_NAME}</h1>
+    </div>
+    <div style="padding: 30px; text-align: center;">
+      <div style="font-size: 50px; margin-bottom: 15px;">${icon}</div>
+      <h2 style="margin: 0;">${title}</h2>
+      ${body}
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+// Envoyer email quand le PAIEMENT est CONFIRMÉ
+export async function sendPaymentConfirmedEmail(data: PaymentEmailData): Promise<boolean> {
+  try {
+    if (!smtpConfigured()) {
+      console.log('SMTP not configured, skipping payment confirmation email');
+      return false;
+    }
+    const transporter = createTransporter();
+    const html = paymentEmailShell(
+      'Paiement confirmé',
+      'linear-gradient(135deg, #16a34a 0%, #22c55e 100%)',
+      '✅',
+      `<p style="margin: 15px 0; color: #666;">Bonjour ${data.companyName}, nous avons bien reçu votre paiement de <strong>${formatPrice(data.totalAmount)}</strong>.</p>
+      <p style="margin: 15px 0; color: #333;">Commande${data.orderNumbers.length > 1 ? 's' : ''} : <strong>${data.orderNumbers.join(', ')}</strong>. Elle${data.orderNumbers.length > 1 ? 's sont' : ' est'} en cours de traitement.</p>`
+    );
+    await transporter.sendMail({
+      from: `"${BRAND_NAME}" <${process.env.SMTP_USER}>`,
+      to: data.contactEmail,
+      subject: `✅ Paiement confirmé - ${data.orderNumbers.join(', ')}`,
+      html,
+    });
+    return true;
+  } catch (error) {
+    console.error('Error sending payment confirmation email:', error);
+    return false;
+  }
+}
+
+// Envoyer email quand le PAIEMENT est REFUSÉ (le client peut saisir une nouvelle référence)
+export async function sendPaymentRejectedEmail(data: PaymentRejectedEmailData): Promise<boolean> {
+  try {
+    if (!smtpConfigured()) {
+      console.log('SMTP not configured, skipping payment rejection email');
+      return false;
+    }
+    const transporter = createTransporter();
+    const html = paymentEmailShell(
+      'Paiement non validé',
+      'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)',
+      '⚠️',
+      `<p style="margin: 15px 0; color: #666;">Bonjour ${data.companyName}, nous n'avons pas pu valider votre paiement pour la commande ${data.orderNumbers.join(', ')} (${formatPrice(data.totalAmount)}).</p>
+      <p style="margin: 15px 0; color: #dc2626;"><strong>Motif : ${data.reason}</strong></p>
+      <p style="margin: 15px 0; color: #333;">Vous pouvez saisir une nouvelle référence de transaction depuis la page de suivi de votre commande.</p>`
+    );
+    await transporter.sendMail({
+      from: `"${BRAND_NAME}" <${process.env.SMTP_USER}>`,
+      to: data.contactEmail,
+      subject: `⚠️ Paiement non validé - ${data.orderNumbers.join(', ')}`,
+      html,
+    });
+    return true;
+  } catch (error) {
+    console.error('Error sending payment rejection email:', error);
     return false;
   }
 }

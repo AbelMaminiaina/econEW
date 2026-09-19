@@ -67,27 +67,31 @@ export function formatQuantity(quantity: number, unit: string): string {
   return INVARIABLE_UNITS.has(unit) ? `${quantity} ${unit}` : `${quantity} ${unit}(s)`;
 }
 
+// Visuels du template Electro (public/electro/img) : repli des produits sans photo.
+const ELECTRONICS_FALLBACKS = [3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map(
+  (n) => `/electro/img/product-${n}.png`
+);
+
+// Image d'un produit : sa photo, sinon un visuel Electro choisi de façon stable à partir de l'id.
+export function getProductImage(
+  product: { id: string; category: string; images: string[] },
+  index = 0
+): string {
+  const own = product.images[index];
+  if (own) return own;
+  const hash = product.id.split('').reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+  return ELECTRONICS_FALLBACKS[hash % ELECTRONICS_FALLBACKS.length];
+}
+
 export function getCategoryLabel(category: string): string {
   // Normaliser la catégorie (remplacer tirets par underscores)
   const normalized = category.replace(/-/g, '_');
   const labels: Record<string, string> = {
-    'porc': 'Porc',
-    'poulet': 'Poulet',
-    'poisson': 'Poisson',
-    'akanga': 'Akanga (Pintade)',
-    'caille': 'Caille',
-    'transformes': 'Produits transformés',
-    'oeufs_frais': 'Oeufs frais',
-    'oeufs_fecondes': 'Oeufs fécondés',
-    'poules': 'Poules',
     'accessoires': 'Accessoires',
-    'volaille': 'Volaille',
-    'emballage': 'Emballage & Conditionnement',
-    'fournitures_bureau': 'Fournitures de bureau',
-    'hygiene_nettoyage': 'Hygiène & Nettoyage',
-    'quincaillerie': 'Quincaillerie',
-    'electronique': 'Électronique & Informatique',
-    'textile': 'Textile professionnel',
+    'electronique': 'Électronique & Photo',
+    'ordinateurs': 'Ordinateurs & Écrans',
+    'mobiles': 'Mobiles & Tablettes',
+    'smartphones': 'Smartphones',
   };
   return labels[normalized] || labels[category] || category;
 }
@@ -159,6 +163,30 @@ export function getShippingCost(
   return SHIPPING_COSTS[method] ?? 0;
 }
 
+// Miroir de backend/src/lib/wholesale.ts : vente en gros uniquement, quantité minimum plancher.
+export const MIN_WHOLESALE_QTY = 10;
+
+export interface SellerGroup<T> {
+  sellerId: string | null;
+  sellerName: string | null;
+  items: T[];
+}
+
+// Regroupe les lignes du panier par vendeur (null = plateforme) : le backend crée une commande par
+// vendeur, avec ses propres frais de livraison.
+export function groupBySeller<T extends { sellerId?: string | null; sellerName?: string | null }>(
+  items: T[]
+): SellerGroup<T>[] {
+  const groups = new Map<string | null, SellerGroup<T>>();
+  for (const item of items) {
+    const key = item.sellerId ?? null;
+    const group = groups.get(key) ?? { sellerId: key, sellerName: item.sellerName ?? null, items: [] };
+    group.items.push(item);
+    groups.set(key, group);
+  }
+  return Array.from(groups.values());
+}
+
 // Miroir de backend/src/lib/pricing.ts — garder les deux alignés.
 /**
  * Prix unitaire applicable pour une quantité donnée (aperçu ; le prix facturé est
@@ -166,10 +194,10 @@ export function getShippingCost(
  */
 export function resolveUnitPrice(
   basePrice: number,
-  priceTiers: { minQty: number; unitPrice: number }[],
+  priceTiers: { minQty: number; unitPrice: number }[] | null | undefined,
   quantity: number
 ): number {
-  const applicable = priceTiers
+  const applicable = (priceTiers ?? [])
     .filter((tier) => quantity >= tier.minQty)
     .sort((a, b) => b.minQty - a.minQty)[0];
 

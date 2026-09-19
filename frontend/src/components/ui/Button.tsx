@@ -36,13 +36,13 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
     const variants = {
       primary:
-        'bg-prairie-500 text-warm-900 hover:bg-prairie-400 focus-visible:ring-prairie-500 shadow-md hover:shadow-lg active:shadow-sm',
+        'bg-electro-primary text-white hover:bg-electro-secondary focus-visible:ring-electro-primary shadow-md hover:shadow-lg active:shadow-sm',
       secondary:
         'bg-terre-500 text-white hover:bg-terre-600 focus-visible:ring-terre-400 shadow-md hover:shadow-lg',
       outline:
-        'border-2 border-prairie-600 text-prairie-600 hover:bg-prairie-50 focus-visible:ring-prairie-500',
+        'border-2 border-electro-primary text-electro-primary hover:bg-electro-light focus-visible:ring-electro-primary',
       ghost:
-        'text-prairie-600 hover:bg-prairie-50 focus-visible:ring-prairie-500',
+        'text-electro-primary hover:bg-electro-light focus-visible:ring-electro-primary',
       danger:
         'bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-500 shadow-md hover:shadow-lg',
     };

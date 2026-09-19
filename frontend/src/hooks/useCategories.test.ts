@@ -58,9 +58,15 @@ describe('useCategories', () => {
 });
 
 describe('useProductCategories', () => {
-  it('filters out non-product categories such as poules', async () => {
+  it('keeps only the active categories', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
-      json: () => Promise.resolve({ categories: sampleCategories }),
+      json: () =>
+        Promise.resolve({
+          categories: [
+            { id: '1', name: 'Mobiles', slug: 'mobiles', order: 0, isActive: true },
+            { id: '2', name: 'Archivée', slug: 'archivee', order: 1, isActive: false },
+          ],
+        }),
     });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -69,7 +75,7 @@ describe('useProductCategories', () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    expect(result.current.categories.map((c) => c.slug)).toEqual(['poulet']);
+    expect(result.current.categories.map((c) => c.slug)).toEqual(['mobiles']);
   });
 });
 

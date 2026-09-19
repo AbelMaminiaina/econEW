@@ -1,4 +1,4 @@
-import type { CompanyStatus, PaymentTerms, UserRole } from '@/types';
+import type { CompanyStatus, UserRole } from '@/types';
 import 'next-auth';
 import 'next-auth/jwt';
 
@@ -13,7 +13,6 @@ declare module 'next-auth' {
       companyId?: string | null;
       companyName?: string | null;
       companyStatus?: CompanyStatus | null;
-      paymentTerms?: PaymentTerms | null;
     };
   }
 
@@ -22,7 +21,6 @@ declare module 'next-auth' {
     companyId: string | null;
     companyName?: string | null;
     companyStatus?: CompanyStatus | null;
-    paymentTerms?: PaymentTerms | null;
     accessToken: string;
   }
 }
@@ -34,6 +32,5 @@ declare module 'next-auth/jwt' {
     companyId?: string | null;
     companyName?: string | null;
     companyStatus?: CompanyStatus | null;
-    paymentTerms?: PaymentTerms | null;
   }
 }

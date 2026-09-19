@@ -117,7 +117,7 @@ describe('GET /api/products', () => {
 
 describe('GET /api/products/:slug', () => {
   it('returns 404 when the product does not exist', async () => {
-    prismaMock.product.findUnique.mockResolvedValue(null);
+    prismaMock.product.findFirst.mockResolvedValue(null);
 
     const res = await request(buildApp()).get('/api/products/unknown');
 
@@ -125,12 +125,28 @@ describe('GET /api/products/:slug', () => {
   });
 
   it('returns the transformed product', async () => {
-    prismaMock.product.findUnique.mockResolvedValue(baseProduct() as any);
+    prismaMock.product.findFirst.mockResolvedValue(baseProduct() as any);
 
     const res = await request(buildApp()).get('/api/products/carton-emballage');
 
     expect(res.status).toBe(200);
     expect(res.body.slug).toBe('carton-emballage');
+  });
+
+  it('only serves published products (approved, from an approved seller)', async () => {
+    prismaMock.product.findFirst.mockResolvedValue(null);
+
+    await request(buildApp()).get('/api/products/en-attente');
+
+    expect(prismaMock.product.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          slug: 'en-attente',
+          status: 'approved',
+          OR: [{ sellerId: null }, { seller: { status: 'approved' } }],
+        }),
+      })
+    );
   });
 });
 
@@ -467,5 +483,125 @@ describe('DELETE /api/products/:productId', () => {
     const res = await request(buildApp()).delete('/api/products/missing').set(adminAuth);
 
     expect(res.status).toBe(404);
+  });
+});
+
+describe('reviews', () => {
+  const buyerAuth = { Authorization: `Bearer ${buyerToken}` };
+
+  it('exposes the average rating and review count on the product list', async () => {
+    prismaMock.product.findMany.mockResolvedValue([baseProduct(), baseProduct({ id: 'p2', slug: 'autre' })] as any);
+    (prismaMock.review.groupBy as any).mockResolvedValue([
+      { productId: 'p1', _avg: { rating: 4.333 }, _count: { rating: 3 } },
+    ]);
+
+    const res = await request(buildApp()).get('/api/products');
+
+    expect(res.status).toBe(200);
+    expect(res.body.products[0]).toMatchObject({ rating: 4.3, reviewCount: 3 });
+    expect(res.body.products[1]).toMatchObject({ rating: null, reviewCount: 0 });
+  });
+
+  it('lists reviews with an anonymised author name', async () => {
+    prismaMock.product.findUnique.mockResolvedValue(baseProduct() as any);
+    prismaMock.review.findMany.mockResolvedValue([
+      {
+        id: 'r1',
+        rating: 5,
+        comment: 'Très bien',
+        createdAt: new Date('2026-01-01'),
+        user: { firstName: 'Jean', lastName: 'Rakoto' },
+      },
+    ] as any);
+    (prismaMock.review.groupBy as any).mockResolvedValue([
+      { productId: 'p1', _avg: { rating: 5 }, _count: { rating: 1 } },
+    ]);
+
+    const res = await request(buildApp()).get('/api/products/carton-emballage/reviews');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ average: 5, count: 1 });
+    expect(res.body.reviews[0].author).toBe('Jean R.');
+  });
+
+  it('returns 404 when listing reviews of an unknown product', async () => {
+    prismaMock.product.findUnique.mockResolvedValue(null);
+
+    const res = await request(buildApp()).get('/api/products/missing/reviews');
+
+    expect(res.status).toBe(404);
+  });
+
+  it('requires authentication to post a review', async () => {
+    const res = await request(buildApp()).post('/api/products/carton-emballage/reviews').send({ rating: 5 });
+
+    expect(res.status).toBe(401);
+  });
+
+  it.each([0, 6, 3.5, '4'])('rejects an invalid rating (%s)', async (rating) => {
+    const res = await request(buildApp())
+      .post('/api/products/carton-emballage/reviews')
+      .set(buyerAuth)
+      .send({ rating });
+
+    expect(res.status).toBe(400);
+    expect(prismaMock.review.upsert).not.toHaveBeenCalled();
+  });
+
+  it('forbids platform admins from rating products', async () => {
+    const res = await request(buildApp())
+      .post('/api/products/carton-emballage/reviews')
+      .set(adminAuth)
+      .send({ rating: 5 });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('saves one review per user and invalidates the product cache', async () => {
+    prismaMock.product.findUnique.mockResolvedValue(baseProduct() as any);
+    prismaMock.review.upsert.mockResolvedValue({ id: 'r1', rating: 4, comment: 'Bien' } as any);
+
+    const res = await request(buildApp())
+      .post('/api/products/carton-emballage/reviews')
+      .set(buyerAuth)
+      .send({ rating: 4, comment: '  Bien  ' });
+
+    expect(res.status).toBe(201);
+    expect(prismaMock.review.upsert).toHaveBeenCalledWith({
+      where: { productId_userId: { productId: 'p1', userId: 'buyer1' } },
+      create: { productId: 'p1', userId: 'buyer1', rating: 4, comment: 'Bien' },
+      update: { rating: 4, comment: 'Bien' },
+    });
+    expect(invalidateProductCache).toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/products (publication)', () => {
+  it('lists only published products and exposes the seller', async () => {
+    prismaMock.product.findMany.mockResolvedValue([
+      baseProduct({ seller: { id: 'c9', name: 'Vendeur SARL' } }),
+    ] as any);
+    (prismaMock.review.groupBy as any).mockResolvedValue([]);
+
+    const res = await request(buildApp()).get('/api/products');
+
+    expect(res.body.products[0].seller).toEqual({ id: 'c9', name: 'Vendeur SARL' });
+    const where = (prismaMock.product.findMany.mock.calls[0][0] as any).where;
+    expect(where.AND).toEqual([
+      { status: 'approved', OR: [{ sellerId: null }, { seller: { status: 'approved' } }] },
+    ]);
+  });
+});
+
+describe('GET /api/products?seller=', () => {
+  it('filtre les produits publiés d’un vendeur', async () => {
+    prismaMock.product.findMany.mockResolvedValue([] as any);
+    (prismaMock.review.groupBy as any).mockResolvedValue([]);
+
+    await request(buildApp()).get('/api/products?seller=c9');
+
+    const where = (prismaMock.product.findMany.mock.calls[0][0] as any).where;
+    expect(where.sellerId).toBe('c9');
+    expect(where.AND).toBeDefined(); // les produits non validés restent exclus
   });
 });

@@ -49,6 +49,14 @@ const config: Config = {
           800: '#262626',
           900: '#171717',
         },
+        // Palette du template Electro (Bootstrap) portée en Tailwind :
+        // primary = orange, secondary = rouge, dark = gris texte/footer, light = fond des bandeaux.
+        electro: {
+          primary: '#F28B00',
+          secondary: '#F92400',
+          dark: '#484848',
+          light: '#F5F5F5',
+        },
         // Fond de page
         cream: {
           50: '#ffffff',
@@ -58,8 +66,8 @@ const config: Config = {
         },
       },
       fontFamily: {
-        display: ['var(--font-inter)', 'system-ui', 'sans-serif'],
-        sans: ['var(--font-inter)', 'system-ui', 'sans-serif'],
+        display: ['var(--font-roboto)', 'var(--font-open-sans)', 'system-ui', 'sans-serif'],
+        sans: ['var(--font-open-sans)', 'system-ui', 'sans-serif'],
       },
       borderRadius: {
         '4xl': '2rem',
@@ -77,6 +85,7 @@ const config: Config = {
         'fade-in': 'fadeIn 0.5s ease-in-out',
         'slide-up': 'slideUp 0.5s ease-out',
         'bounce-gentle': 'bounceGentle 2s infinite',
+        'star-pop': 'starPop 0.5s ease-out both',
       },
       keyframes: {
         fadeIn: {
@@ -86,6 +95,10 @@ const config: Config = {
         slideUp: {
           '0%': { opacity: '0', transform: 'translateY(20px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        starPop: {
+          '0%, 100%': { transform: 'scale(1) rotate(0deg)' },
+          '50%': { transform: 'scale(1.35) rotate(-12deg)' },
         },
         bounceGentle: {
           '0%, 100%': { transform: 'translateY(0)' },

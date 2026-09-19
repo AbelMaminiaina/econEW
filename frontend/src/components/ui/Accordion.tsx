@@ -51,7 +51,7 @@ export function Accordion({
             className={cn(
               'w-full flex items-center justify-between p-4 text-left',
               'bg-white hover:bg-warm-50 transition-colors',
-              'focus:outline-none focus:ring-2 focus:ring-inset focus:ring-prairie-500'
+              'focus:outline-none focus:ring-2 focus:ring-inset focus:ring-electro-primary'
             )}
             aria-expanded={isOpen(item.id)}
           >

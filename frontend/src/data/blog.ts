@@ -49,36 +49,37 @@ Ces deux mécanismes — MOQ et paliers de prix — sont propres à la vente en 
   },
   {
     id: '2',
-    title: 'Facturation à 30 ou 60 jours : ce qu\'il faut savoir',
-    slug: 'facturation-30-60-jours-ce-quil-faut-savoir',
-    excerpt: 'All propose la facturation différée aux entreprises dont le compte est approuvé. Voici comment elle fonctionne concrètement.',
-    content: `# Facturation à 30 ou 60 jours : ce qu'il faut savoir
+    title: 'Payer par Mobile Money : mode d\'emploi',
+    slug: 'payer-par-mobile-money-mode-d-emploi',
+    excerpt: 'MVola, Orange Money ou Airtel Money : voici comment régler votre commande sur All, avec ou sans compte.',
+    content: `# Payer par Mobile Money : mode d'emploi
 
-Pour les entreprises, payer une commande immédiatement n'est pas toujours la meilleure option pour la trésorerie. C'est pourquoi All propose la facturation différée aux comptes professionnels approuvés.
+Sur All, le paiement se fait en ligne, par Mobile Money, au moment de la commande. C'est le même pour les particuliers, les entreprises et les visiteurs sans compte.
 
-## Comment les conditions sont-elles fixées ?
+## Étape 1 — Choisir votre opérateur
 
-Lors de l'approbation de votre compte, notre équipe vous attribue des conditions de paiement : Net 30 (paiement sous 30 jours) ou Net 60 (paiement sous 60 jours), ainsi qu'un plafond de crédit éventuel.
+À la dernière étape de la commande, sélectionnez MVola, Orange Money ou Airtel Money. Le paiement par carte bancaire n'est pas encore disponible.
 
-## Que se passe-t-il à chaque commande ?
+## Étape 2 — Envoyer le montant
 
-Dès qu'une commande est validée, une facture est générée automatiquement avec :
-- Un numéro de facture unique
-- Le montant total de la commande
-- La date d'échéance, calculée selon vos conditions de paiement
+Une fois la commande validée, nous vous indiquons le montant exact et le numéro à créditer. Ces informations vous sont aussi envoyées par e-mail.
 
-## Où suivre mes factures ?
+## Étape 3 — Saisir la référence
 
-Toutes vos factures sont consultables dans l'espace "Mes commandes" de votre compte, avec leur statut (envoyée, payée, en retard).
+Après l'envoi, saisissez la référence de la transaction (reçue par SMS) et le numéro depuis lequel vous avez payé.
 
-## Pourquoi ce mode de paiement ?
+## Étape 4 — Vérification
 
-La facturation différée est un standard du commerce B2B : elle permet aux entreprises de recevoir leurs marchandises et de les intégrer à leur activité avant d'avoir à régler la facture, ce qui facilite la gestion du besoin en fonds de roulement.`,
+Notre équipe vérifie le paiement et vous prévient par e-mail. Votre commande est alors traitée. Si un paiement ne peut pas être validé, le motif vous est indiqué et vous pouvez saisir une nouvelle référence.
+
+## Un panier avec plusieurs vendeurs ?
+
+Un seul paiement couvre toutes les commandes du panier : chaque vendeur prépare ensuite sa propre commande.`,
     coverImage: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=1200',
     category: 'conseils',
     publishedAt: '2026-02-20',
     author: authors.equipe,
-    tags: ['facturation', 'paiement différé', 'net 30'],
+    tags: ['paiement', 'mobile money', 'mvola'],
     readingTime: 3,
   },
   {
@@ -102,9 +103,9 @@ Renseignez votre nom, votre email professionnel et un mot de passe. Ce compte se
 
 Votre dossier est examiné sous 1 à 2 jours ouvrés. Nous vérifions les informations transmises avant d'approuver le compte.
 
-## Étape 4 — Réception de vos conditions
+## Étape 4 — Confirmation de votre compte
 
-Une fois approuvé, vous recevez un e-mail de confirmation précisant vos conditions de paiement (Net 30 ou Net 60). Vous pouvez alors vous connecter, consulter les tarifs et passer commande.
+Une fois approuvé, vous recevez un e-mail de confirmation. Vous pouvez alors vous connecter, consulter les tarifs et passer commande.
 
 ## Et après ?
 
@@ -120,7 +121,7 @@ Votre statut de compte (en attente, approuvé) est visible à tout moment dans l
     id: '4',
     title: '5 bonnes pratiques pour optimiser vos commandes en gros',
     slug: '5-bonnes-pratiques-commandes-en-gros',
-    excerpt: 'Quelques réflexes simples pour tirer le meilleur parti des tarifs dégressifs et de la facturation différée sur All.',
+    excerpt: 'Quelques réflexes simples pour tirer le meilleur parti des tarifs dégressifs sur All.',
     content: `# 5 bonnes pratiques pour optimiser vos commandes en gros
 
 Voici quelques conseils pour optimiser vos achats professionnels sur All.
@@ -133,9 +134,9 @@ Regarder les paliers de prix d'un produit avant de commander permet parfois d'aj
 
 Vérifiez le MOQ de chaque produit avant de planifier votre commande, surtout si vous combinez plusieurs références dans un même panier.
 
-## 3. Suivez vos échéances de facturation
+## 3. Réglez rapidement par Mobile Money
 
-Consultez régulièrement votre espace "Mes commandes" pour anticiper les échéances de paiement de vos factures Net 30/60.
+Votre commande n'est traitée qu'une fois le paiement vérifié : saisissez la référence de la transaction dès l'envoi pour accélérer la préparation.
 
 ## 4. Choisissez le bon mode de livraison
 
@@ -143,7 +144,7 @@ Le retrait sur place est gratuit ; la livraison standard ou express a un coût q
 
 ## 5. Centralisez les commandes de votre équipe
 
-Si plusieurs personnes de votre entreprise commandent sur All, privilégiez un compte entreprise unique pour garder une vue d'ensemble sur les commandes et les factures.`,
+Si plusieurs personnes de votre entreprise commandent sur All, privilégiez un compte entreprise unique pour garder une vue d'ensemble sur les commandes et les paiements.`,
     coverImage: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=1200',
     category: 'conseils',
     publishedAt: '2026-03-15',

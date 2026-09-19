@@ -1,7 +1,8 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
-import { DeliveryMethod, PaymentTerms } from '@prisma/client';
+import { DeliveryMethod } from '@prisma/client';
 import {
   sendOrderConfirmationEmail,
   sendOrderCancellationEmail,
@@ -11,7 +12,16 @@ import {
 import { invalidateProductCache } from '../lib/cache.js';
 import { computeShippingCost } from '../lib/shipping.js';
 import { resolveUnitPrice } from '../lib/pricing.js';
-import { authenticate, requirePlatformAdmin, requireCanOrder } from '../middleware/auth.js';
+import {
+  authenticate,
+  optionalAuthenticate,
+  canOrderOrGuest,
+  requirePlatformAdmin,
+  requireCanOrder,
+  requireApprovedCompany,
+} from '../middleware/auth.js';
+import { rateLimit } from '../lib/rateLimit.js';
+import { PAYMENT_METHOD_IDS, getPaymentMethod } from '../lib/payments.js';
 
 const router = Router();
 
@@ -31,7 +41,35 @@ const checkoutSchema = z.object({
     })
     .optional(),
   deliveryMethod: z.enum(['standard', 'express', 'retrait']),
+  // Paiement en ligne obligatoire (Mobile Money) : pas de paiement différé ni à la livraison
+  paymentMethod: z.enum(PAYMENT_METHOD_IDS),
   notes: z.string().optional(),
+  // Commande sans compte : coordonnées du visiteur (obligatoires s'il n'est pas connecté)
+  guest: z
+    .object({
+      name: z.string().trim().min(2, 'Nom requis').max(100),
+      email: z.string().trim().email('E-mail invalide').max(200),
+      phone: z.string().trim().min(6, 'Téléphone requis').max(30),
+    })
+    .optional(),
+  // Champ piège pour les robots : un humain ne le voit pas et le laisse vide
+  website: z.string().optional(),
+});
+
+// Commandes sans compte : limitées par IP pour freiner les abus (les visiteurs connectés ne le sont pas)
+const guestOrderLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  message: 'Trop de commandes depuis cette adresse. Réessayez plus tard.',
+});
+const limitGuestOrders = (req: Request, res: Response, next: NextFunction) =>
+  req.user ? next() : guestOrderLimiter(req, res, next);
+
+// Suivi d'une commande passée sans compte (numéro + e-mail), limité pour empêcher l'énumération
+const trackLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: 'Trop de recherches. Réessayez dans quelques minutes.',
 });
 
 function generateOrderNumber(): string {
@@ -40,21 +78,11 @@ function generateOrderNumber(): string {
   return `ORD-${timestamp}-${randomStr}`.toUpperCase();
 }
 
-function generateInvoiceNumber(): string {
-  const timestamp = Date.now().toString(36);
-  const randomStr = Math.random().toString(36).substring(2, 8);
-  return `INV-${timestamp}-${randomStr}`.toUpperCase();
-}
-
-function dueDateFor(paymentTerms: PaymentTerms): Date {
-  const days = paymentTerms === 'net_60' ? 60 : 30;
-  return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-}
-
-// Passer commande — particuliers (prix de base, paiement à la livraison) ou entreprises
-// approuvées (prix dégressifs, facture différée). Le MOQ s'applique à tous : vente en gros.
+// Passer commande — particuliers et visiteurs (prix de base) ou entreprises approuvées (prix
+// dégressifs). Le paiement Mobile Money est obligatoire pour tous : la commande reste « en attente »
+// jusqu'à confirmation du paiement par un administrateur. Le MOQ s'applique à tous : vente en gros.
 // Le prix n'est JAMAIS pris depuis le client : il est recalculé serveur.
-router.post('/', authenticate, requireCanOrder, async (req: Request, res: Response) => {
+router.post('/', optionalAuthenticate, limitGuestOrders, canOrderOrGuest, async (req: Request, res: Response) => {
   try {
     const validatedData = checkoutSchema.parse(req.body);
 
@@ -62,7 +90,18 @@ router.post('/', authenticate, requireCanOrder, async (req: Request, res: Respon
       return res.status(400).json({ success: false, error: 'Adresse de livraison requise' });
     }
 
-    const isCustomer = req.user!.role === 'customer';
+    // Visiteur sans compte : traité comme un particulier (prix de base)
+    const isGuest = !req.user;
+    if (validatedData.website) {
+      return res.status(400).json({ success: false, error: 'Demande refusée' });
+    }
+    if (isGuest && !validatedData.guest) {
+      return res
+        .status(400)
+        .json({ success: false, error: 'Vos coordonnées sont requises pour commander sans compte' });
+    }
+    const guest = validatedData.guest;
+    const isCustomer = isGuest || req.user!.role === 'customer';
 
     const company = isCustomer
       ? null
@@ -71,17 +110,26 @@ router.post('/', authenticate, requireCanOrder, async (req: Request, res: Respon
       return res.status(404).json({ success: false, error: 'Entreprise introuvable' });
     }
 
-    const customerUser = isCustomer
-      ? await prisma.user.findUnique({ where: { id: req.user!.userId } })
-      : null;
-    if (isCustomer && !customerUser) {
+    const customerUser =
+      isCustomer && !isGuest
+        ? await prisma.user.findUnique({ where: { id: req.user!.userId } })
+        : null;
+    if (isCustomer && !isGuest && !customerUser) {
       return res.status(404).json({ success: false, error: 'Utilisateur introuvable' });
+    }
+
+    const paymentMethod = getPaymentMethod(validatedData.paymentMethod);
+    if (!paymentMethod) {
+      return res.status(400).json({ success: false, error: "Ce moyen de paiement n'est pas disponible" });
     }
 
     const productIds = validatedData.items.map((item) => item.productId);
     const products = await prisma.product.findMany({
       where: { id: { in: productIds } },
-      include: { priceTiers: true },
+      include: {
+        priceTiers: true,
+        seller: { select: { id: true, name: true, status: true } },
+      },
     });
     const productMap = new Map(products.map((p) => [p.id, p]));
 
@@ -90,6 +138,23 @@ router.post('/', authenticate, requireCanOrder, async (req: Request, res: Respon
       const product = productMap.get(item.productId);
       if (!product) {
         return res.status(400).json({ success: false, error: `Produit ${item.productId} introuvable` });
+      }
+      // Seuls les produits publiés (validés, actifs, vendeur approuvé) peuvent être commandés
+      const unavailable =
+        (product.status && product.status !== 'approved') ||
+        product.isActive === false ||
+        (product.seller && product.seller.status !== 'approved');
+      if (unavailable) {
+        return res.status(400).json({
+          success: false,
+          error: `"${product.name}" n'est plus disponible à la vente`,
+        });
+      }
+      if (company && product.sellerId && product.sellerId === company.id) {
+        return res.status(400).json({
+          success: false,
+          error: `Vous ne pouvez pas acheter votre propre produit "${product.name}"`,
+        });
       }
       if (item.quantity < product.moq) {
         return res.status(400).json({
@@ -108,14 +173,12 @@ router.post('/', authenticate, requireCanOrder, async (req: Request, res: Respon
       return { productId: item.productId, quantity: item.quantity, price, product };
     });
 
-    const subtotal = pricedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-
-    // Create address (liée à l'entreprise) si fournie
+    // Adresse (liée à l'entreprise ou au particulier) si fournie : une seule pour tout le panier
     let address = null;
     if (validatedData.shippingAddress) {
       address = await prisma.address.create({
         data: {
-          ...(company ? { companyId: company.id } : { userId: req.user!.userId }),
+          ...(company ? { companyId: company.id } : isGuest ? {} : { userId: req.user!.userId }),
           street: validatedData.shippingAddress.street,
           city: validatedData.shippingAddress.city,
           postalCode: validatedData.shippingAddress.postalCode,
@@ -124,137 +187,177 @@ router.post('/', authenticate, requireCanOrder, async (req: Request, res: Respon
       });
     }
 
-    const freeShippingProductIds = new Set(
-      pricedItems.filter((item) => item.product.freeShipping).map((item) => item.productId)
-    );
-    const shippingCost = computeShippingCost(
-      validatedData.deliveryMethod,
-      subtotal,
-      freeShippingProductIds,
-      pricedItems,
-    );
-    const total = subtotal + shippingCost;
-
-    let allInStock = true;
-    const stockUpdates: { id: string; newQuantity: number }[] = [];
-
+    // Un panier multi-vendeurs est scindé en une commande par vendeur (sellerId null = plateforme).
+    // Frais de livraison, stock et e-mails sont traités séparément pour chaque commande.
+    const groups = new Map<string | null, typeof pricedItems>();
     for (const item of pricedItems) {
-      if (item.product.stockQuantity < item.quantity) {
-        allInStock = false;
-        break;
-      }
-      stockUpdates.push({
-        id: item.productId,
-        newQuantity: item.product.stockQuantity - item.quantity,
-      });
+      const key = item.product.sellerId ?? null;
+      groups.set(key, [...(groups.get(key) ?? []), item]);
     }
 
-    const orderStatus = allInStock ? 'processing' : 'pending';
-    // Facturation différée réservée aux entreprises ; les particuliers paient à la livraison/retrait
-    const paymentTerms: PaymentTerms | null = company ? company.paymentTerms ?? 'net_30' : null;
-    const dueDate = paymentTerms ? dueDateFor(paymentTerms) : null;
+    const checkoutGroup = randomUUID();
+    const createdOrders: {
+      id: string;
+      orderNumber: string;
+      status: string;
+      total: number;
+      sellerName: string | null;
+    }[] = [];
+    const emailDatas: Parameters<typeof sendOrderConfirmationEmail>[0][] = [];
 
-    const order = await prisma.order.create({
-      data: {
-        orderNumber: generateOrderNumber(),
-        companyId: company?.id ?? null,
-        userId: req.user!.userId,
-        addressId: address?.id,
-        deliveryMethod: validatedData.deliveryMethod as DeliveryMethod,
-        status: orderStatus,
+    for (const [sellerId, groupItems] of groups) {
+      const subtotal = groupItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+      const freeShippingProductIds = new Set(
+        groupItems.filter((item) => item.product.freeShipping).map((item) => item.productId)
+      );
+      const shippingCost = computeShippingCost(
+        validatedData.deliveryMethod,
+        subtotal,
+        freeShippingProductIds,
+        groupItems,
+      );
+      const total = subtotal + shippingCost;
+
+      let allInStock = true;
+      const stockUpdates: { id: string; newQuantity: number }[] = [];
+
+      for (const item of groupItems) {
+        if (item.product.stockQuantity < item.quantity) {
+          allInStock = false;
+          break;
+        }
+        stockUpdates.push({
+          id: item.productId,
+          newQuantity: item.product.stockQuantity - item.quantity,
+        });
+      }
+
+      // Toute commande démarre « en attente » : elle n'avance qu'après confirmation du paiement.
+      // Le stock est réservé dès maintenant s'il suffit (restitué en cas d'annulation).
+      const orderStatus = 'pending';
+
+      const order = await prisma.order.create({
+        data: {
+          orderNumber: generateOrderNumber(),
+          companyId: company?.id ?? null,
+          userId: req.user?.userId ?? null,
+          guestName: guest?.name ?? null,
+          guestEmail: guest?.email.toLowerCase() ?? null,
+          guestPhone: guest?.phone ?? null,
+          sellerId,
+          checkoutGroup,
+          addressId: address?.id,
+          deliveryMethod: validatedData.deliveryMethod as DeliveryMethod,
+          status: orderStatus,
+          subtotal,
+          shippingCost,
+          total,
+          paymentMethod: paymentMethod.id,
+          paymentStatus: 'awaiting',
+          stockReserved: allInStock,
+          notes: validatedData.notes,
+          items: {
+            create: groupItems.map((item) => ({
+              productId: item.productId,
+              quantity: item.quantity,
+              price: item.price,
+              availableFrom: item.product.availableFrom ?? null,
+            })),
+          },
+        },
+        include: { items: true },
+      });
+
+      if (allInStock) {
+        await Promise.all(
+          stockUpdates.map((update) =>
+            prisma.product.update({
+              where: { id: update.id },
+              data: {
+                stockQuantity: update.newQuantity,
+                inStock: update.newQuantity > 0,
+              },
+            })
+          )
+        );
+        await invalidateProductCache();
+      }
+
+      const emailData = {
+        orderNumber: order.orderNumber,
+        companyName: company
+          ? company.name
+          : guest
+            ? guest.name
+            : `${customerUser!.firstName} ${customerUser!.lastName}`,
+        contactEmail: company ? company.contactEmail : guest ? guest.email : customerUser!.email,
+        contactPhone: (company ? company.contactPhone : guest ? guest.phone : customerUser!.phone) ?? undefined,
+        address: address
+          ? {
+              street: address.street,
+              city: address.city,
+              postalCode: address.postalCode,
+              country: address.country,
+            }
+          : null,
+        deliveryMethod: validatedData.deliveryMethod,
+        items: groupItems.map((item) => ({
+          name: item.product.name,
+          quantity: item.quantity,
+          price: item.price,
+          availableFrom: item.product.availableFrom ?? null,
+        })),
         subtotal,
         shippingCost,
         total,
-        paymentTerms,
-        dueDate,
-        notes: validatedData.notes,
-        items: {
-          create: pricedItems.map((item) => ({
-            productId: item.productId,
-            quantity: item.quantity,
-            price: item.price,
-            availableFrom: item.product.availableFrom ?? null,
-          })),
-        },
-      },
-      include: { items: true },
-    });
+        status: orderStatus,
+        createdAt: new Date(),
+      };
+      emailDatas.push(emailData);
 
-    const invoice =
-      company && dueDate
-        ? await prisma.invoice.create({
-            data: {
-              invoiceNumber: generateInvoiceNumber(),
-              orderId: order.id,
-              companyId: company.id,
-              amount: total,
-              dueDate,
-              status: 'sent',
-            },
-          })
-        : null;
-
-    if (allInStock) {
-      await Promise.all(
-        stockUpdates.map((update) =>
-          prisma.product.update({
-            where: { id: update.id },
-            data: {
-              stockQuantity: update.newQuantity,
-              inStock: update.newQuantity > 0,
-            },
-          })
-        )
-      );
-      await invalidateProductCache();
+      createdOrders.push({
+        id: order.id,
+        orderNumber: order.orderNumber,
+        status: orderStatus,
+        total,
+        sellerName: groupItems[0].product.seller?.name ?? null,
+      });
     }
 
-    const emailData = {
-      orderNumber: order.orderNumber,
-      companyName: company ? company.name : `${customerUser!.firstName} ${customerUser!.lastName}`,
-      contactEmail: company ? company.contactEmail : customerUser!.email,
-      contactPhone: (company ? company.contactPhone : customerUser!.phone) ?? undefined,
-      address: address
-        ? {
-            street: address.street,
-            city: address.city,
-            postalCode: address.postalCode,
-            country: address.country,
-          }
-        : null,
-      deliveryMethod: validatedData.deliveryMethod,
-      items: pricedItems.map((item) => ({
-        name: item.product.name,
-        quantity: item.quantity,
-        price: item.price,
-        availableFrom: item.product.availableFrom ?? null,
-      })),
-      subtotal,
-      shippingCost,
-      total,
-      status: orderStatus,
-      invoiceNumber: invoice?.invoiceNumber,
-      dueDate: dueDate ?? undefined,
-      paymentTerms: paymentTerms ?? undefined,
-      createdAt: new Date(),
+    const totalAmount = createdOrders.reduce((sum, o) => sum + o.total, 0);
+    const payment = {
+      method: paymentMethod.id,
+      label: paymentMethod.label,
+      number: paymentMethod.number,
+      accountName: paymentMethod.accountName,
+      totalAmount,
     };
 
-    // Envoi asynchrone (ne bloque pas la réponse)
-    sendOrderConfirmationEmail(emailData).catch((err) =>
-      console.error('Failed to send email:', err)
-    );
+    // Envoi asynchrone (ne bloque pas la réponse) : e-mail avec les instructions de paiement
+    for (const emailData of emailDatas) {
+      sendOrderConfirmationEmail({
+        ...emailData,
+        payment: {
+          methodLabel: paymentMethod.label,
+          number: paymentMethod.number,
+          accountName: paymentMethod.accountName,
+          totalToPay: totalAmount,
+        },
+      }).catch((err) => console.error('Failed to send email:', err));
+    }
+
+    const first = createdOrders[0];
 
     res.json({
       success: true,
-      message: allInStock
-        ? 'Commande confirmée et en préparation'
-        : 'Commande en attente de stock',
-      orderId: order.id,
-      orderNumber: order.orderNumber,
-      status: orderStatus,
-      total,
-      invoiceNumber: invoice?.invoiceNumber ?? null,
-      dueDate,
+      message: 'Commande enregistrée : en attente de votre paiement',
+      // Champs de la première commande conservés (compatibilité) ; `orders` liste toutes les commandes
+      orderId: first.id,
+      orderNumber: first.orderNumber,
+      status: first.status,
+      total: totalAmount,
+      payment,
+      orders: createdOrders,
     });
   } catch (error) {
     console.error('Checkout error:', error);
@@ -283,8 +386,8 @@ router.get('/orders', authenticate, requirePlatformAdmin, async (_req: Request, 
         company: true,
         user: true,
         customer: true,
+        seller: { select: { name: true } },
         address: true,
-        invoice: true,
         items: {
           include: {
             product: {
@@ -302,19 +405,22 @@ router.get('/orders', authenticate, requirePlatformAdmin, async (_req: Request, 
     const formattedOrders = orders.map((order) => ({
       id: order.id,
       orderNumber: order.orderNumber,
-      companyName: order.company?.name ?? (order.user ? `${order.user.firstName} ${order.user.lastName}` : order.customer ? `${order.customer.firstName} ${order.customer.lastName}` : 'N/A'),
+      sellerName: order.seller?.name ?? null,
+      companyName: order.company?.name ?? (order.user ? `${order.user.firstName} ${order.user.lastName}` : order.customer ? `${order.customer.firstName} ${order.customer.lastName}` : order.guestName ?? 'N/A'),
       customerType: order.companyId ? 'professionnel' : 'particulier',
-      contactEmail: order.company?.contactEmail ?? order.user?.email ?? order.customer?.email ?? null,
-      contactPhone: order.company?.contactPhone ?? order.user?.phone ?? order.customer?.phone ?? null,
+      isGuest: !order.companyId && !order.userId && !order.customerId,
+      contactEmail: order.company?.contactEmail ?? order.user?.email ?? order.customer?.email ?? order.guestEmail ?? null,
+      contactPhone: order.company?.contactPhone ?? order.user?.phone ?? order.customer?.phone ?? order.guestPhone ?? null,
       status: order.status,
       subtotal: order.subtotal,
       shippingCost: order.shippingCost,
       total: order.total,
       deliveryMethod: order.deliveryMethod,
-      paymentTerms: order.paymentTerms,
-      dueDate: order.dueDate,
-      invoiceNumber: order.invoice?.invoiceNumber ?? null,
-      invoiceStatus: order.invoice?.status ?? null,
+      paymentMethod: order.paymentMethod,
+      paymentStatus: order.paymentStatus,
+      paymentReference: order.paymentReference,
+      paymentRejectionReason: order.paymentRejectionReason,
+      paidAt: order.paidAt,
       notes: order.notes,
       cancelReason: order.cancelReason,
       createdAt: order.createdAt,
@@ -349,8 +455,8 @@ router.get('/orders/mine', authenticate, requireCanOrder, async (req: Request, r
         ? { userId: req.user!.userId }
         : { companyId: req.user!.companyId! },
       include: {
+        seller: { select: { name: true } },
         address: true,
-        invoice: true,
         items: {
           include: { product: { select: { name: true, slug: true } } },
         },
@@ -361,15 +467,18 @@ router.get('/orders/mine', authenticate, requireCanOrder, async (req: Request, r
     const formattedOrders = orders.map((order) => ({
       id: order.id,
       orderNumber: order.orderNumber,
+      sellerName: order.seller?.name ?? null,
+      checkoutGroup: order.checkoutGroup,
       status: order.status,
       subtotal: order.subtotal,
       shippingCost: order.shippingCost,
       total: order.total,
       deliveryMethod: order.deliveryMethod,
-      paymentTerms: order.paymentTerms,
-      dueDate: order.dueDate,
-      invoiceNumber: order.invoice?.invoiceNumber ?? null,
-      invoiceStatus: order.invoice?.status ?? null,
+      paymentMethod: order.paymentMethod,
+      paymentStatus: order.paymentStatus,
+      paymentReference: order.paymentReference,
+      paymentRejectionReason: order.paymentRejectionReason,
+      paidAt: order.paidAt,
       cancelReason: order.cancelReason,
       createdAt: order.createdAt,
       address: order.address
@@ -395,8 +504,64 @@ router.get('/orders/mine', authenticate, requireCanOrder, async (req: Request, r
   }
 });
 
-// Admin: Update order status
-router.patch('/orders/:orderId/status', authenticate, requirePlatformAdmin, async (req: Request, res: Response) => {
+// Vendeur (entreprise approuvée) : commandes reçues pour ses produits
+router.get('/orders/seller', authenticate, requireApprovedCompany, async (req: Request, res: Response) => {
+  try {
+    const orders = await prisma.order.findMany({
+      where: { sellerId: req.user!.companyId! },
+      include: {
+        company: true,
+        user: { select: { firstName: true, lastName: true, email: true, phone: true } },
+        address: true,
+        items: { include: { product: { select: { name: true, slug: true } } } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json({
+      orders: orders.map((order) => ({
+        id: order.id,
+        orderNumber: order.orderNumber,
+        buyerName:
+          order.company?.name ??
+          (order.user ? `${order.user.firstName} ${order.user.lastName}` : order.guestName ?? 'N/A'),
+        buyerType: order.companyId ? 'professionnel' : 'particulier',
+        contactEmail: order.company?.contactEmail ?? order.user?.email ?? order.guestEmail ?? null,
+        contactPhone: order.company?.contactPhone ?? order.user?.phone ?? order.guestPhone ?? null,
+        status: order.status,
+        subtotal: order.subtotal,
+        shippingCost: order.shippingCost,
+        total: order.total,
+        deliveryMethod: order.deliveryMethod,
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
+        notes: order.notes,
+        cancelReason: order.cancelReason,
+        createdAt: order.createdAt,
+        address: order.address
+          ? {
+              street: order.address.street,
+              city: order.address.city,
+              postalCode: order.address.postalCode,
+              country: order.address.country,
+            }
+          : null,
+        items: order.items.map((item) => ({
+          name: item.product.name,
+          quantity: item.quantity,
+          price: item.price,
+          availableFrom: item.availableFrom,
+        })),
+      })),
+    });
+  } catch (error) {
+    console.error('Error fetching seller orders:', error);
+    res.status(500).json({ error: 'Failed to fetch orders' });
+  }
+});
+
+// Admin ou vendeur propriétaire de la commande : changer son statut
+router.patch('/orders/:orderId/status', authenticate, async (req: Request, res: Response) => {
   try {
     const { orderId } = req.params;
     const { status, reason } = req.body;
@@ -411,6 +576,13 @@ router.patch('/orders/:orderId/status', authenticate, requirePlatformAdmin, asyn
       include: { items: true },
     });
 
+    const isAdmin = req.user!.role === 'platform_admin';
+    const isOrderSeller = !!req.user!.companyId && existingOrder?.sellerId === req.user!.companyId;
+    if (!isAdmin && !isOrderSeller) {
+      // Même réponse pour « introuvable » et « pas la vôtre » : on ne révèle pas l'existence de la commande
+      return res.status(403).json({ error: 'Accès réservé aux administrateurs ou au vendeur de la commande' });
+    }
+
     if (!existingOrder) {
       return res.status(404).json({ error: 'Commande non trouvée' });
     }
@@ -419,18 +591,42 @@ router.patch('/orders/:orderId/status', authenticate, requirePlatformAdmin, asyn
       return res.status(400).json({ error: 'Cette commande est déjà annulée' });
     }
 
+    // La commande n'avance qu'une fois le paiement Mobile Money confirmé
+    const requiresPayment = ['confirmed', 'processing', 'shipped', 'delivered'].includes(status);
+    if (requiresPayment && existingOrder.paymentStatus !== 'paid') {
+      return res.status(400).json({ error: "Le paiement de cette commande n'a pas encore été confirmé" });
+    }
+
+    // Commande payée mais dont le stock n'avait pas pu être réservé : on le réserve maintenant
+    const mustReserveStock = requiresPayment && !existingOrder.stockReserved;
+    if (mustReserveStock) {
+      const stocks = await prisma.product.findMany({
+        where: { id: { in: existingOrder.items.map((i) => i.productId) } },
+        select: { id: true, name: true, stockQuantity: true },
+      });
+      const stockById = new Map(stocks.map((p) => [p.id, p]));
+      for (const item of existingOrder.items) {
+        const product = stockById.get(item.productId);
+        if (!product || product.stockQuantity < item.quantity) {
+          return res.status(400).json({
+            error: `Stock insuffisant pour "${product?.name ?? item.productId}"`,
+          });
+        }
+      }
+    }
+
     const order = await prisma.order.update({
       where: { id: orderId },
       data: {
         status,
-        ...(status === 'cancelled' ? { cancelReason: reason || null } : {}),
+        ...(status === 'cancelled' ? { cancelReason: reason || null, stockReserved: false } : {}),
+        ...(mustReserveStock ? { stockReserved: true } : {}),
       },
       include: {
         company: true,
         user: { select: { firstName: true, lastName: true, email: true, phone: true } },
         customer: true,
         address: true,
-        invoice: true,
         items: {
           include: {
             product: { select: { name: true } },
@@ -439,10 +635,20 @@ router.patch('/orders/:orderId/status', authenticate, requirePlatformAdmin, asyn
       },
     });
 
-    // Une commande "pending" n'a jamais décrémenté le stock (stock insuffisant au moment
-    // de la commande) : rien à restaurer. Pour toute autre commande annulée, le stock avait
-    // été décrémenté à la création, on le restitue.
-    if (status === 'cancelled' && existingOrder.status !== 'pending') {
+    // Stock : réservé à la création si suffisant (stockReserved) et restitué en cas d'annulation ;
+    // une commande payée dont le stock n'était pas réservé le décrémente à son premier avancement.
+    if (mustReserveStock) {
+      await Promise.all(
+        existingOrder.items.map((item) =>
+          prisma.product.update({
+            where: { id: item.productId },
+            data: { stockQuantity: { decrement: item.quantity } },
+          })
+        )
+      );
+      await invalidateProductCache();
+    }
+    if (status === 'cancelled' && existingOrder.stockReserved) {
       await Promise.all(
         existingOrder.items.map((item) =>
           prisma.product.update({
@@ -457,16 +663,8 @@ router.patch('/orders/:orderId/status', authenticate, requirePlatformAdmin, asyn
       await invalidateProductCache();
     }
 
-    // Annuler la commande annule aussi la facture associée
-    if (status === 'cancelled' && order.invoice) {
-      await prisma.invoice.update({
-        where: { id: order.invoice.id },
-        data: { status: 'cancelled' },
-      });
-    }
-
-    const companyName = order.company?.name ?? (order.user ? `${order.user.firstName} ${order.user.lastName}` : order.customer ? `${order.customer.firstName} ${order.customer.lastName}` : 'N/A');
-    const contactEmail = order.company?.contactEmail ?? order.user?.email ?? order.customer?.email ?? null;
+    const companyName = order.company?.name ?? (order.user ? `${order.user.firstName} ${order.user.lastName}` : order.customer ? `${order.customer.firstName} ${order.customer.lastName}` : order.guestName ?? 'N/A');
+    const contactEmail = order.company?.contactEmail ?? order.user?.email ?? order.customer?.email ?? order.guestEmail ?? null;
 
     // Envoi asynchrone des emails de notification (ne bloque pas la réponse)
     if (status === 'cancelled' && contactEmail) {
@@ -521,6 +719,58 @@ router.patch('/orders/:orderId/status', authenticate, requirePlatformAdmin, asyn
   }
 });
 
+// Suivi d'une commande passée sans compte : numéro + e-mail saisi à la commande.
+// Même réponse 404 si le numéro n'existe pas ou si l'e-mail ne correspond pas.
+router.get('/track', trackLimiter, async (req: Request, res: Response) => {
+  try {
+    const orderNumber = typeof req.query.orderNumber === 'string' ? req.query.orderNumber.trim() : '';
+    const email = typeof req.query.email === 'string' ? req.query.email.trim().toLowerCase() : '';
+    if (!orderNumber || !email) {
+      return res.status(400).json({ error: 'Numéro de commande et e-mail requis' });
+    }
+
+    const order = await prisma.order.findUnique({
+      where: { orderNumber },
+      include: {
+        seller: { select: { name: true } },
+        address: true,
+        items: { include: { product: { select: { name: true, slug: true } } } },
+      },
+    });
+
+    if (!order || !order.guestEmail || order.guestEmail.toLowerCase() !== email) {
+      return res.status(404).json({ error: 'Aucune commande ne correspond à ces informations' });
+    }
+
+    res.json({
+      orderNumber: order.orderNumber,
+      status: order.status,
+      paymentMethod: order.paymentMethod,
+      paymentStatus: order.paymentStatus,
+      paymentRejectionReason: order.paymentRejectionReason,
+      sellerName: order.seller?.name ?? null,
+      subtotal: order.subtotal,
+      shippingCost: order.shippingCost,
+      total: order.total,
+      deliveryMethod: order.deliveryMethod,
+      cancelReason: order.cancelReason,
+      createdAt: order.createdAt,
+      address: order.address
+        ? {
+            street: order.address.street,
+            city: order.address.city,
+            postalCode: order.address.postalCode,
+            country: order.address.country,
+          }
+        : null,
+      items: order.items.map((item) => ({ name: item.product.name, quantity: item.quantity, price: item.price })),
+    });
+  } catch (error) {
+    console.error('Error tracking guest order:', error);
+    res.status(500).json({ error: 'Failed to fetch order' });
+  }
+});
+
 // Get order by number — accessible par l'entreprise propriétaire ou un admin plateforme
 router.get('/:orderNumber', authenticate, async (req: Request, res: Response) => {
   try {
@@ -532,7 +782,6 @@ router.get('/:orderNumber', authenticate, async (req: Request, res: Response) =>
         company: true,
         customer: true,
         address: true,
-        invoice: true,
         items: {
           include: {
             product: true,
@@ -547,6 +796,7 @@ router.get('/:orderNumber', authenticate, async (req: Request, res: Response) =>
 
     const isOwner =
       (order.companyId && order.companyId === req.user!.companyId) ||
+      (order.sellerId && order.sellerId === req.user!.companyId) ||
       (order.userId && order.userId === req.user!.userId);
     const isAdmin = req.user!.role === 'platform_admin';
     if (!isOwner && !isAdmin) {

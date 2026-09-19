@@ -3,452 +3,506 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useSession, signOut } from 'next-auth/react';
 import {
   Menu,
   X,
   Search,
   ShoppingCart,
+  ShoppingBag,
+  Heart,
   ChevronDown,
   User,
   LogOut,
-  Sparkles,
-  Building2,
+  LayoutDashboard,
   Package,
+  Mail,
+  Building2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useCart } from '@/hooks/useCart';
+import { useWishlist } from '@/hooks/useWishlist';
 import { useCategories } from '@/hooks/useCategories';
 import { useCompanyAccess } from '@/hooks/useCompanyAccess';
 import CartDrawer from '../cart/CartDrawer';
 
-const submenuVariants = {
-  hidden: { opacity: 0 },
-  visible: { opacity: 1, transition: { duration: 0.15 } },
-  exit: { opacity: 0, transition: { duration: 0.1 } },
-};
+const CONTACT_EMAIL = 'contact@all.mg';
 
-const ghostButton =
-  'inline-flex items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium text-warm-700 transition-colors hover:bg-warm-100 hover:text-warm-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-prairie-500';
-const primaryButton =
-  'inline-flex items-center justify-center gap-2 rounded-lg bg-prairie-500 px-3 py-1.5 text-sm font-medium text-warm-900 shadow transition-colors hover:bg-prairie-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-prairie-500 focus-visible:ring-offset-2';
+const topbarLink = 'text-warm-500 transition-colors hover:text-electro-primary';
+const dropdownItem =
+  'flex items-center gap-3 px-4 py-2.5 text-sm text-warm-700 transition-colors hover:bg-electro-primary hover:text-white';
 
-interface SearchFormProps {
-  value: string;
-  onChange: (value: string) => void;
-  onSubmit: (e: React.FormEvent) => void;
-  className?: string;
-  inputClassName?: string;
-  autoFocus?: boolean;
-}
-
-function SearchForm({ value, onChange, onSubmit, className, inputClassName, autoFocus }: SearchFormProps) {
+// Logo Electro : sac + nom de la marque
+function Logo({ light = false }: { light?: boolean }) {
   return (
-    <form role="search" onSubmit={onSubmit} className={cn('relative', className)}>
-      <input
-        type="search"
-        placeholder="Rechercher un produit…"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={cn(
-          'w-full border border-warm-300 bg-white pl-10 pr-4 text-sm transition-all placeholder:text-warm-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-prairie-500',
-          inputClassName
-        )}
-        aria-label="Rechercher un produit"
-        autoFocus={autoFocus}
+    <Link href="/" aria-label="All - Accueil" className="inline-flex items-center">
+      <ShoppingBag
+        className={cn('mr-2 h-8 w-8 lg:h-9 lg:w-9', light ? 'text-white' : 'text-electro-secondary')}
+        aria-hidden="true"
       />
-      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-warm-400" />
-    </form>
+      <span
+        className={cn(
+          'font-display text-4xl font-medium leading-none lg:text-5xl',
+          light ? 'text-electro-secondary' : 'text-electro-primary'
+        )}
+      >
+        All
+      </span>
+    </Link>
   );
 }
 
 export function Header() {
-  const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isCartOpen, setIsCartOpen] = useState(false);
-  const [openSubmenu, setOpenSubmenu] = useState<string | null>(null);
+  const [isCategoriesOpen, setIsCategoriesOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isCartOpen, setIsCartOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchCategory, setSearchCategory] = useState('');
   const pathname = usePathname();
   const router = useRouter();
   const cart = useCart();
+  const wishlist = useWishlist();
   const { data: session, status } = useSession();
   const { isApproved, isCustomer } = useCompanyAccess();
   const { categories } = useCategories();
 
-  // Menu de navigation avec les catégories dynamiques
-  const navigation = useMemo(() => {
-    const produitsSubmenu = [
-      { name: 'Tous les produits', href: '/produits', icon: Sparkles, color: 'text-purple-500' },
-      ...categories
-        .filter((c) => c.isActive)
-        .map((c) => ({
-          name: c.name,
-          href: `/produits?categorie=${c.slug}`,
-          icon: Package,
-          color: 'text-gray-500',
-        })),
-    ];
+  const activeCategories = useMemo(() => categories.filter((c) => c.isActive), [categories]);
 
-    return [
+  const navigation = useMemo(
+    () => [
       { name: 'Accueil', href: '/' },
-      {
-        name: 'Produits',
-        href: '/produits',
-        submenu: produitsSubmenu,
-      },
+      { name: 'Produits', href: '/produits' },
+      { name: 'Vendeurs', href: '/vendeurs' },
       { name: 'Services', href: '/services' },
       { name: 'Blog', href: '/blog' },
       { name: 'Contact', href: '/contact' },
-    ];
-  }, [categories]);
+    ],
+    []
+  );
 
   useEffect(() => {
     setIsMounted(true);
-    const handleScroll = () => setIsScrolled(window.scrollY > 10);
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   useEffect(() => {
     setIsMobileMenuOpen(false);
-    setIsSearchOpen(false);
-    setOpenSubmenu(null);
+    setIsCategoriesOpen(false);
+    setIsUserMenuOpen(false);
   }, [pathname]);
 
   const itemCount = isMounted ? cart.items.reduce((sum, item) => sum + item.quantity, 0) : 0;
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
+    const params = new URLSearchParams();
     const q = searchQuery.trim();
-    router.push(q ? `/produits?q=${encodeURIComponent(q)}` : '/produits');
-    setIsSearchOpen(false);
+    if (q) params.set('q', q);
+    if (searchCategory) params.set('categorie', searchCategory);
+    const qs = params.toString();
+    router.push(qs ? `/produits?${qs}` : '/produits');
+    setIsMobileMenuOpen(false);
   };
+
+  const isActive = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href));
+
+  const accountLabel = session?.user?.role === 'platform_admin'
+    ? null
+    : isCustomer
+      ? 'Compte particulier'
+      : isApproved
+        ? 'Compte professionnel approuvé'
+        : 'En attente de validation';
+
+  const accountMenu = session ? (
+    <div
+      className="relative"
+      onMouseEnter={() => setIsUserMenuOpen(true)}
+      onMouseLeave={() => setIsUserMenuOpen(false)}
+    >
+      <button
+        type="button"
+        onClick={() => setIsUserMenuOpen((open) => !open)}
+        className={cn('inline-flex items-center gap-2 text-sm', topbarLink)}
+        aria-label="Mon compte"
+        aria-expanded={isUserMenuOpen}
+      >
+        <User className="h-4 w-4" />
+        <span className="max-w-[160px] truncate">
+          {session.user?.companyName || session.user?.name || 'Mon compte'}
+        </span>
+        <ChevronDown className="h-3.5 w-3.5" />
+      </button>
+      <AnimatePresence>
+        {isUserMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="absolute right-0 top-full z-50 min-w-[230px] pt-2"
+          >
+            <div className="overflow-hidden rounded-xl border border-warm-200 bg-electro-light py-1 shadow-xl">
+              <div className="border-b border-warm-200 px-4 py-3">
+                <p className="truncate font-semibold text-warm-800">
+                  {session.user?.companyName || session.user?.name}
+                </p>
+                <p className="truncate text-sm text-warm-500">{session.user?.email}</p>
+                {accountLabel && (
+                  <p className="mt-1 text-xs font-medium text-electro-primary">{accountLabel}</p>
+                )}
+              </div>
+              <Link href="/suivi-commande" className={dropdownItem}>
+                <Package className="h-4 w-4" />
+                Mes commandes
+              </Link>
+              {session.user?.companyStatus === 'approved' && session.user?.role !== 'platform_admin' && (
+                <Link href="/vendeur" className={dropdownItem}>
+                  <Package className="h-4 w-4" />
+                  Espace vendeur
+                </Link>
+              )}
+              {session.user?.role === 'platform_admin' && (
+                <Link href="/admin" className={dropdownItem}>
+                  <LayoutDashboard className="h-4 w-4" />
+                  Dashboard Admin
+                </Link>
+              )}
+              <button type="button" onClick={() => signOut()} className={cn(dropdownItem, 'w-full')}>
+                <LogOut className="h-4 w-4" />
+                Se déconnecter
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  ) : status === 'loading' ? (
+    <div className="h-5 w-24 animate-pulse rounded bg-warm-200" />
+  ) : (
+    <div className="inline-flex items-center gap-2 text-sm">
+      <Link href="/connexion" className={topbarLink}>
+        Connexion
+      </Link>
+      <span className="text-warm-400">/</span>
+      <Link href="/inscription" className={topbarLink}>
+        Créer un compte
+      </Link>
+    </div>
+  );
 
   return (
     <>
-      <header
-        className={cn(
-          'sticky top-0 z-40 border-b border-warm-200 transition-all duration-300',
-          isScrolled ? 'bg-white/95 shadow-lg backdrop-blur-xl' : 'bg-white/80 shadow-sm backdrop-blur-md'
-        )}
-      >
-        {/* Bandeau d'information */}
-        <div className="hidden bg-prairie-50 py-1.5 text-center text-xs font-medium text-prairie-800 sm:block">
-          <span className="inline-flex items-center gap-1.5">
-            <Building2 className="h-3.5 w-3.5" />
-            Tarifs dégressifs et facturation à 30/60 jours pour les comptes professionnels approuvés
-          </span>
+      {/* Topbar (grand écran) */}
+      <div className="hidden border-b border-warm-200 bg-white lg:block">
+        <div className="mx-auto grid h-11 max-w-[1600px] grid-cols-3 items-center px-6 xl:px-12">
+          <div className="flex items-center gap-2 text-sm">
+            <Link href="/services" className={topbarLink}>Aide</Link>
+            <span className="text-warm-400">/</span>
+            <Link href="/suivi-commande" className={topbarLink}>Suivi de commande</Link>
+            <span className="text-warm-400">/</span>
+            <Link href="/contact" className={topbarLink}>Contact</Link>
+          </div>
+          <div className="flex items-center justify-center gap-2 text-sm">
+            <span className="text-warm-800">Écrivez-nous :</span>
+            <a href={`mailto:${CONTACT_EMAIL}`} className={topbarLink}>{CONTACT_EMAIL}</a>
+          </div>
+          <div className="flex items-center justify-end">{accountMenu}</div>
         </div>
+      </div>
 
-        <div className="container mx-auto px-4 py-4 sm:px-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-8 lg:space-x-12">
-              {/* Logo */}
-              <Link
-                href="/"
-                className="text-2xl font-bold tracking-tight text-prairie-700 transition-colors hover:text-prairie-800"
-                aria-label="All - Accueil"
-              >
-                All
-              </Link>
-
-              {/* Desktop navigation */}
-              <nav className="hidden items-center space-x-1 lg:flex" aria-label="Navigation principale">
-                {navigation.map((item) => (
-                  <div
-                    key={item.name}
-                    className="relative"
-                    onMouseEnter={() => item.submenu && setOpenSubmenu(item.name)}
-                    onMouseLeave={() => setOpenSubmenu(null)}
-                  >
-                    <Link
-                      href={item.href}
-                      aria-current={pathname === item.href ? 'page' : undefined}
-                      className={cn(
-                        'relative flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200',
-                        pathname === item.href
-                          ? 'bg-prairie-100 text-warm-900 shadow-md'
-                          : 'text-warm-700 hover:bg-warm-100 hover:text-warm-900'
-                      )}
-                    >
-                      <span>{item.name}</span>
-                      {item.submenu && (
-                        <ChevronDown
-                          className={cn('h-4 w-4 transition-transform', openSubmenu === item.name && 'rotate-180')}
-                        />
-                      )}
-                    </Link>
-
-                    {/* Sous-menu */}
-                    {item.submenu && openSubmenu === item.name && (
-                      <div className="absolute left-1/2 top-full -translate-x-1/2 pt-2">
-                        <div className="relative min-w-[280px] rounded-2xl border border-warm-200 bg-white p-2 shadow-xl">
-                          <div className="grid gap-1">
-                            {item.submenu.map((subitem) => {
-                              const IconComponent = subitem.icon;
-                              return (
-                                <Link
-                                  key={subitem.name}
-                                  href={subitem.href}
-                                  className="flex items-center gap-3 rounded-xl px-4 py-3 text-warm-700 transition-colors hover:bg-prairie-50"
-                                >
-                                  <div className={cn('rounded-lg bg-warm-50 p-2', subitem.color)}>
-                                    <IconComponent className="h-4 w-4" />
-                                  </div>
-                                  <span className="font-medium">{subitem.name}</span>
-                                </Link>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </nav>
-            </div>
-
-            {/* Recherche (grand écran) */}
-            <div className="mx-8 hidden max-w-md flex-1 xl:flex">
-              <SearchForm
+      {/* Logo, recherche, panier (grand écran) */}
+      <div className="hidden bg-white lg:block">
+        <div className="mx-auto grid max-w-[1600px] grid-cols-12 items-center gap-4 px-6 py-4 xl:px-12">
+          <div className="col-span-3">
+            <Logo />
+          </div>
+          <form role="search" onSubmit={handleSearch} className="col-span-6 pl-4">
+            <div className="flex overflow-hidden rounded-full border border-warm-300 bg-white focus-within:border-electro-primary">
+              <input
+                type="search"
                 value={searchQuery}
-                onChange={setSearchQuery}
-                onSubmit={handleSearch}
-                className="w-full"
-                inputClassName="rounded-full py-2"
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Que recherchez-vous ?"
+                aria-label="Rechercher un produit"
+                className="min-w-0 flex-1 border-0 bg-transparent px-6 py-3 text-sm text-warm-800 placeholder:text-warm-400 focus:outline-none"
               />
+              <select
+                value={searchCategory}
+                onChange={(e) => setSearchCategory(e.target.value)}
+                aria-label="Catégorie"
+                className="w-48 cursor-pointer border-0 border-l border-warm-300 bg-transparent px-3 py-3 text-sm text-warm-800 focus:outline-none"
+              >
+                <option value="">Toutes les catégories</option>
+                {activeCategories.map((c) => (
+                  <option key={c.id} value={c.slug}>{c.name}</option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                aria-label="Lancer la recherche"
+                className="bg-electro-primary px-8 text-white transition-colors duration-500 hover:bg-electro-secondary"
+              >
+                <Search className="h-5 w-5" />
+              </button>
             </div>
-
-            {/* Actions */}
-            <div className="flex items-center space-x-2 sm:space-x-4">
-              <button
-                onClick={() => setIsSearchOpen(!isSearchOpen)}
-                className="rounded-full p-2 transition-colors hover:bg-warm-100 xl:hidden"
-                aria-label="Rechercher"
-                aria-expanded={isSearchOpen}
-              >
-                <Search className="h-5 w-5 text-warm-700" />
-              </button>
-
-              <button
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="rounded-full p-2 transition-colors hover:bg-warm-100 lg:hidden"
-                aria-label="Menu"
-                aria-expanded={isMobileMenuOpen}
-              >
-                {isMobileMenuOpen ? <X className="h-6 w-6 text-warm-700" /> : <Menu className="h-6 w-6 text-warm-700" />}
-              </button>
-
-              {/* Panier */}
-              <button
-                onClick={() => setIsCartOpen(true)}
-                className="group relative rounded-full p-2 transition-all duration-200 hover:bg-warm-100"
-                aria-label={`Panier, ${itemCount} article${itemCount > 1 ? 's' : ''}`}
-              >
-                <ShoppingCart className="h-6 w-6 text-warm-700 transition-colors group-hover:text-warm-900" />
+          </form>
+          <div className="col-span-3 flex items-center justify-end gap-4">
+            <Link
+              href="/favoris"
+              className="group inline-flex items-center text-warm-500"
+              aria-label={`Mes favoris, ${wishlist.count} produit${wishlist.count > 1 ? 's' : ''}`}
+            >
+              <span className="relative flex h-11 w-11 items-center justify-center rounded-full border border-warm-300 transition-colors group-hover:border-electro-secondary group-hover:text-electro-secondary">
+                <Heart className="h-5 w-5" />
+                {wishlist.count > 0 && (
+                  <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-electro-secondary px-1 text-xs font-bold text-white">
+                    {wishlist.count > 99 ? '99+' : wishlist.count}
+                  </span>
+                )}
+              </span>
+            </Link>
+            <button
+              type="button"
+              onClick={() => setIsCartOpen(true)}
+              className="group inline-flex items-center gap-3 text-warm-500"
+              aria-label={`Panier, ${itemCount} article${itemCount > 1 ? 's' : ''}`}
+            >
+              <span className="relative flex h-11 w-11 items-center justify-center rounded-full border border-warm-300 transition-colors group-hover:border-electro-primary group-hover:text-electro-primary">
+                <ShoppingCart className="h-5 w-5" />
                 {itemCount > 0 && (
-                  <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-prairie-600 px-1 text-xs font-bold text-white">
+                  <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-electro-secondary px-1 text-xs font-bold text-white">
                     {itemCount > 99 ? '99+' : itemCount}
                   </span>
                 )}
-              </button>
+              </span>
+              <span className="text-sm text-warm-800">Panier</span>
+            </button>
+          </div>
+        </div>
+      </div>
 
-              {/* Compte */}
-              {status === 'loading' ? (
-                <div className="h-9 w-9 animate-pulse rounded-full bg-warm-200" />
-              ) : session ? (
-                <div
-                  className="relative"
-                  onMouseEnter={() => setIsUserMenuOpen(true)}
-                  onMouseLeave={() => setIsUserMenuOpen(false)}
-                >
-                  <button
-                    className="flex items-center gap-2 rounded-full p-1.5 transition-colors hover:bg-warm-100"
-                    aria-label="Mon compte"
-                  >
-                    {session.user?.image ? (
-                      <img
-                        src={session.user.image}
-                        alt={session.user.name || 'Utilisateur'}
-                        className="h-9 w-9 rounded-full ring-2 ring-prairie-200 ring-offset-2"
-                      />
-                    ) : (
-                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-prairie-500 shadow">
-                        <User className="h-4 w-4 text-warm-900" />
-                      </div>
-                    )}
-                  </button>
-                  <AnimatePresence>
-                    {isUserMenuOpen && (
-                      <motion.div
-                        variants={submenuVariants}
-                        initial="hidden"
-                        animate="visible"
-                        exit="exit"
-                        className="absolute right-0 top-full z-50 mt-2 min-w-[220px] overflow-hidden rounded-2xl border border-warm-200 bg-white py-2 shadow-2xl"
+      {/* Barre de navigation orange */}
+      <div className="sticky top-0 z-40 bg-electro-primary shadow-sm">
+        <div className="mx-auto flex max-w-[1600px] items-center px-4 lg:px-6 xl:px-12">
+          {/* Toutes les catégories (grand écran) */}
+          <div
+            className="relative hidden w-[250px] shrink-0 lg:block"
+            onMouseEnter={() => setIsCategoriesOpen(true)}
+            onMouseLeave={() => setIsCategoriesOpen(false)}
+          >
+            <button
+              type="button"
+              onClick={() => setIsCategoriesOpen((open) => !open)}
+              aria-expanded={isCategoriesOpen}
+              className="flex w-full items-center py-3 text-left text-xl font-medium text-white"
+            >
+              <Menu className="mr-2 h-5 w-5" />
+              Catégories
+            </button>
+            {isCategoriesOpen && (
+              <div className="absolute left-0 right-0 top-full z-50 overflow-hidden rounded-b-lg bg-electro-light shadow-xl">
+                <ul>
+                  <li>
+                    <Link
+                      href="/produits"
+                      className="flex items-center justify-between border-b border-white/60 px-4 py-2 text-electro-dark transition-colors hover:bg-electro-primary hover:text-white"
+                    >
+                      Tous les produits
+                    </Link>
+                  </li>
+                  {activeCategories.map((c) => (
+                    <li key={c.id}>
+                      <Link
+                        href={`/produits?categorie=${c.slug}`}
+                        className="flex items-center justify-between border-b border-white/60 px-4 py-2 text-electro-dark transition-colors last:border-b-0 hover:bg-electro-primary hover:text-white"
                       >
-                        <div className="border-b border-warm-100 px-4 py-3">
-                          <p className="truncate font-semibold text-warm-800">
-                            {session.user?.companyName || session.user?.name}
-                          </p>
-                          <p className="truncate text-sm text-warm-500">{session.user?.email}</p>
-                          {session.user?.role !== 'platform_admin' && (
-                            <p className="mt-1 text-xs font-medium">
-                              {isCustomer ? (
-                                <span className="text-prairie-600">Compte particulier</span>
-                              ) : isApproved ? (
-                                <span className="text-prairie-600">Compte professionnel approuvé</span>
-                              ) : (
-                                <span className="text-amber-600">En attente de validation</span>
-                              )}
-                            </p>
-                          )}
-                        </div>
-                        <Link
-                          href="/suivi-commande"
-                          className="flex items-center gap-3 px-4 py-3 text-sm text-warm-700 transition-colors hover:bg-prairie-50 hover:text-prairie-700"
-                        >
-                          <Package className="h-4 w-4" />
-                          Mes commandes
-                        </Link>
-                        {session.user?.role === 'platform_admin' && (
-                          <Link
-                            href="/admin"
-                            className="flex items-center gap-3 px-4 py-3 text-sm text-warm-700 transition-colors hover:bg-prairie-50 hover:text-prairie-700"
-                          >
-                            <Sparkles className="h-4 w-4" />
-                            Dashboard Admin
-                          </Link>
-                        )}
-                        <button
-                          onClick={() => signOut()}
-                          className="flex w-full items-center gap-3 px-4 py-3 text-sm text-red-600 transition-colors hover:bg-red-50"
-                        >
-                          <LogOut className="h-4 w-4" />
-                          Se déconnecter
-                        </button>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              ) : (
-                <div className="hidden items-center space-x-2 sm:flex">
-                  <Link href="/connexion" className={ghostButton}>
-                    Connexion
-                  </Link>
-                  <Link href="/inscription" className={primaryButton}>
-                    Créer un compte
-                  </Link>
-                </div>
-              )}
-            </div>
+                        {c.name}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
 
-          {/* Recherche (mobile / tablette) */}
-          <AnimatePresence>
-            {isSearchOpen && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mt-4 overflow-hidden xl:hidden"
-              >
-                <SearchForm
-                  value={searchQuery}
-                  onChange={setSearchQuery}
-                  onSubmit={handleSearch}
-                  inputClassName="rounded-lg py-3"
-                  autoFocus
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {/* Logo (mobile) */}
+          <div className="py-2 lg:hidden">
+            <Logo light />
+          </div>
 
-          {/* Menu mobile */}
-          <AnimatePresence>
-            {isMobileMenuOpen && (
-              <motion.nav
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.25 }}
-                className="mt-4 max-h-[70vh] overflow-y-auto lg:hidden"
-                aria-label="Navigation mobile"
+          {/* Navigation (grand écran) */}
+          <nav className="ml-auto hidden items-center lg:flex" aria-label="Navigation principale">
+            {navigation.map((item) => (
+              <Link
+                key={item.name}
+                href={item.href}
+                aria-current={isActive(item.href) ? 'page' : undefined}
+                className={cn(
+                  'px-4 py-[18px] font-display text-[17px] font-medium transition-colors duration-500 hover:text-white',
+                  isActive(item.href) ? 'text-white' : 'text-electro-dark'
+                )}
               >
-                <div className="flex flex-col space-y-2 border-b border-warm-200 pb-4">
+                {item.name}
+              </Link>
+            ))}
+            <Link
+              href="/inscription"
+              className="ml-2 inline-flex items-center gap-2 rounded-full bg-electro-secondary px-4 py-2 text-sm font-medium text-white transition-colors duration-500 hover:bg-white hover:text-electro-secondary"
+            >
+              <Building2 className="h-4 w-4" />
+              Devenir client pro
+            </Link>
+          </nav>
+
+          {/* Actions (mobile) */}
+          <div className="ml-auto flex items-center gap-1 lg:hidden">
+            <Link
+              href="/favoris"
+              className="relative rounded-md p-2 text-white"
+              aria-label={`Mes favoris, ${wishlist.count} produit${wishlist.count > 1 ? 's' : ''}`}
+            >
+              <Heart className="h-6 w-6" />
+              {wishlist.count > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-electro-secondary px-1 text-xs font-bold text-white">
+                  {wishlist.count > 99 ? '99+' : wishlist.count}
+                </span>
+              )}
+            </Link>
+            <button
+              type="button"
+              onClick={() => setIsCartOpen(true)}
+              className="relative rounded-md p-2 text-white"
+              aria-label={`Panier, ${itemCount} article${itemCount > 1 ? 's' : ''}`}
+            >
+              <ShoppingCart className="h-6 w-6" />
+              {itemCount > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-electro-secondary px-1 text-xs font-bold text-white">
+                  {itemCount > 99 ? '99+' : itemCount}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsMobileMenuOpen((open) => !open)}
+              className="rounded-md border border-white/60 p-2 text-white"
+              aria-label="Menu"
+              aria-expanded={isMobileMenuOpen}
+            >
+              {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Menu mobile */}
+        <AnimatePresence>
+          {isMobileMenuOpen && (
+            <motion.nav
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.25 }}
+              className="max-h-[80vh] overflow-y-auto bg-electro-primary lg:hidden"
+              aria-label="Navigation mobile"
+            >
+              <div className="space-y-4 px-4 pb-5">
+                <form role="search" onSubmit={handleSearch}>
+                  <div className="flex overflow-hidden rounded-full bg-white">
+                    <input
+                      type="search"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Que recherchez-vous ?"
+                      aria-label="Rechercher un produit"
+                      className="min-w-0 flex-1 border-0 bg-transparent px-5 py-3 text-sm text-warm-800 focus:outline-none"
+                    />
+                    <button
+                      type="submit"
+                      aria-label="Lancer la recherche"
+                      className="bg-electro-secondary px-5 text-white"
+                    >
+                      <Search className="h-5 w-5" />
+                    </button>
+                  </div>
+                </form>
+
+                <div className="flex flex-col">
                   {navigation.map((item) => (
-                    <div key={item.name}>
-                      <Link
-                        href={item.href}
-                        onClick={() => setIsMobileMenuOpen(false)}
-                        aria-current={pathname === item.href ? 'page' : undefined}
-                        className={cn(
-                          'block rounded-lg px-3 py-2.5 text-sm font-medium transition-all',
-                          pathname === item.href
-                            ? 'bg-prairie-100 text-warm-900'
-                            : 'text-warm-700 hover:bg-warm-50 hover:text-warm-900'
-                        )}
-                      >
-                        {item.name}
-                      </Link>
-                      {item.submenu && (
-                        <div className="ml-4 mt-1 space-y-1 border-l-2 border-prairie-100 pl-4">
-                          {item.submenu.map((subitem) => {
-                            const IconComponent = subitem.icon;
-                            return (
-                              <Link
-                                key={subitem.name}
-                                href={subitem.href}
-                                onClick={() => setIsMobileMenuOpen(false)}
-                                className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-warm-600 transition-colors hover:bg-prairie-50 hover:text-prairie-700"
-                              >
-                                <IconComponent className={cn('h-4 w-4', subitem.color)} />
-                                {subitem.name}
-                              </Link>
-                            );
-                          })}
-                        </div>
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      aria-current={isActive(item.href) ? 'page' : undefined}
+                      className={cn(
+                        'py-2 font-display text-[17px] font-medium',
+                        isActive(item.href) ? 'text-white' : 'text-electro-dark'
                       )}
-                    </div>
+                    >
+                      {item.name}
+                    </Link>
                   ))}
-
-                  <Link
-                    href="/suivi-commande"
-                    onClick={() => setIsMobileMenuOpen(false)}
-                    className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-warm-700 transition-colors hover:bg-warm-50 hover:text-warm-900"
-                  >
-                    <Package className="h-4 w-4 text-prairie-600" />
+                  <Link href="/suivi-commande" className="py-2 font-display text-[17px] font-medium text-electro-dark">
                     Suivi de commande
                   </Link>
                 </div>
 
-                {!session && (
-                  <div className="flex flex-col space-y-3 pt-4 sm:hidden">
+                {activeCategories.length > 0 && (
+                  <div>
+                    <p className="mb-1 text-sm font-semibold uppercase tracking-wide text-white">Catégories</p>
+                    <ul className="overflow-hidden rounded-lg bg-electro-light">
+                      {activeCategories.map((c) => (
+                        <li key={c.id}>
+                          <Link
+                            href={`/produits?categorie=${c.slug}`}
+                            className="block border-b border-white/60 px-4 py-2 text-electro-dark last:border-b-0"
+                          >
+                            {c.name}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {session ? (
+                  <button
+                    type="button"
+                    onClick={() => signOut()}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-white py-2.5 text-sm font-medium text-electro-secondary"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Se déconnecter
+                  </button>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
                     <Link
                       href="/connexion"
-                      onClick={() => setIsMobileMenuOpen(false)}
-                      className="inline-flex w-full items-center justify-center rounded-lg border border-warm-300 px-3 py-2.5 text-sm font-medium text-warm-800 transition-colors hover:bg-warm-50"
+                      className="inline-flex items-center justify-center rounded-full bg-white py-2.5 text-sm font-medium text-electro-dark"
                     >
                       Connexion
                     </Link>
                     <Link
                       href="/inscription"
-                      onClick={() => setIsMobileMenuOpen(false)}
-                      className="inline-flex w-full items-center justify-center rounded-lg bg-prairie-500 px-3 py-2.5 text-sm font-medium text-warm-900 shadow transition-colors hover:bg-prairie-400"
+                      className="inline-flex items-center justify-center rounded-full bg-electro-secondary py-2.5 text-sm font-medium text-white"
                     >
                       Créer un compte
                     </Link>
                   </div>
                 )}
-              </motion.nav>
-            )}
-          </AnimatePresence>
-        </div>
-      </header>
+
+                <a
+                  href={`mailto:${CONTACT_EMAIL}`}
+                  className="flex items-center justify-center gap-2 text-sm text-white"
+                >
+                  <Mail className="h-4 w-4" />
+                  {CONTACT_EMAIL}
+                </a>
+              </div>
+            </motion.nav>
+          )}
+        </AnimatePresence>
+      </div>
 
       {/* Panier */}
       <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />

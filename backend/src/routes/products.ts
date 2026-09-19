@@ -5,10 +5,45 @@ import { authenticate, requirePlatformAdmin } from '../middleware/auth.js';
 
 const router = Router();
 
+type RatingStats = Map<string, { average: number; count: number }>;
+
+// Note moyenne et nombre d'avis par produit, en une seule requête d'agrégation.
+async function getRatingStats(productIds: string[]): Promise<RatingStats> {
+  const stats: RatingStats = new Map();
+  if (productIds.length === 0) return stats;
+
+  const rows = await prisma.review.groupBy({
+    by: ['productId'],
+    where: { productId: { in: productIds } },
+    _avg: { rating: true },
+    _count: { rating: true },
+  });
+
+  for (const row of rows ?? []) {
+    stats.set(row.productId, {
+      average: Math.round((row._avg.rating ?? 0) * 10) / 10,
+      count: row._count.rating,
+    });
+  }
+  return stats;
+}
+
+// Produits visibles publiquement : validés par l'admin, dont le vendeur (s'il y en a un) est approuvé
+const PUBLIC_PRODUCT_FILTER = {
+  status: 'approved' as const,
+  OR: [{ sellerId: null }, { seller: { status: 'approved' as const } }],
+};
+
+const SELLER_SELECT = { select: { id: true, name: true } };
+
 // Transform product for frontend
-function transformProduct(p: any) {
+function transformProduct(p: any, ratings?: RatingStats) {
+  const stats = ratings?.get(p.id);
   return {
     ...p,
+    seller: p.seller ?? null,
+    rating: stats ? stats.average : null,
+    reviewCount: stats ? stats.count : 0,
     category: p.category.replace('_', '-'),
     isActive: p.isActive ?? true,
     moq: p.moq ?? 1,
@@ -27,16 +62,21 @@ function transformProduct(p: any) {
 // Get all products with filters
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { category, search, inStock, includeInactive } = req.query;
+    const { category, search, inStock, includeInactive, seller } = req.query;
 
     // Build cache key based on query params
-    const cacheKey = `${CACHE_KEYS.PRODUCTS}:list:${category || 'all'}:${search || ''}:${inStock || ''}:${includeInactive || ''}`;
+    const cacheKey = `${CACHE_KEYS.PRODUCTS}:list:${category || 'all'}:${search || ''}:${inStock || ''}:${includeInactive || ''}:${seller || ''}`;
 
     const result = await withCache(
       cacheKey,
       CACHE_TTL.PRODUCTS,
       async () => {
-        const where: any = {};
+        const where: any = { AND: [PUBLIC_PRODUCT_FILTER] };
+
+        // Produits d'un vendeur (page « profil vendeur »)
+        if (seller && typeof seller === 'string') {
+          where.sellerId = seller;
+        }
 
         // Filter by category (slugs are dash-separated, stored values use underscores)
         if (category && category !== 'all') {
@@ -65,14 +105,15 @@ router.get('/', async (req: Request, res: Response) => {
 
         const products = await prisma.product.findMany({
           where,
-          include: { priceTiers: { orderBy: { minQty: 'asc' } } },
+          include: { priceTiers: { orderBy: { minQty: 'asc' } }, seller: SELLER_SELECT },
           orderBy: [
             { inStock: 'desc' },  // En stock en premier
             { createdAt: 'desc' },
           ],
         });
 
-        const transformedProducts = products.map(transformProduct);
+        const ratings = await getRatingStats(products.map((p) => p.id));
+        const transformedProducts = products.map((p) => transformProduct(p, ratings));
 
         return {
           products: transformedProducts,
@@ -101,13 +142,13 @@ router.get('/:slug', async (req: Request, res: Response) => {
       cacheKey,
       CACHE_TTL.PRODUCT,
       async () => {
-        const p = await prisma.product.findUnique({
-          where: { slug },
-          include: { priceTiers: { orderBy: { minQty: 'asc' } } },
+        const p = await prisma.product.findFirst({
+          where: { slug, ...PUBLIC_PRODUCT_FILTER },
+          include: { priceTiers: { orderBy: { minQty: 'asc' } }, seller: SELLER_SELECT },
         });
 
         if (!p) return null;
-        return transformProduct(p);
+        return transformProduct(p, await getRatingStats([p.id]));
       }
     );
 
@@ -143,12 +184,14 @@ router.get('/:slug/related', async (req: Request, res: Response) => {
           where: {
             category: product.category,
             slug: { not: slug },
+            ...PUBLIC_PRODUCT_FILTER,
           },
-          include: { priceTiers: { orderBy: { minQty: 'asc' } } },
+          include: { priceTiers: { orderBy: { minQty: 'asc' } }, seller: SELLER_SELECT },
           take: limit,
         });
 
-        return relatedProducts.map(transformProduct);
+        const ratings = await getRatingStats(relatedProducts.map((p) => p.id));
+        return relatedProducts.map((p) => transformProduct(p, ratings));
       }
     );
 
@@ -160,6 +203,77 @@ router.get('/:slug/related', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error fetching related products:', error);
     res.status(500).json({ error: 'Failed to fetch related products' });
+  }
+});
+
+// Avis d'un produit (liste + moyenne). L'auteur est réduit à « Prénom N. ».
+router.get('/:slug/reviews', async (req: Request, res: Response) => {
+  try {
+    const product = await prisma.product.findUnique({ where: { slug: req.params.slug } });
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    const [reviews, stats] = await Promise.all([
+      prisma.review.findMany({
+        where: { productId: product.id },
+        include: { user: { select: { firstName: true, lastName: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      }),
+      getRatingStats([product.id]),
+    ]);
+
+    const summary = stats.get(product.id);
+    res.json({
+      average: summary ? summary.average : null,
+      count: summary ? summary.count : 0,
+      reviews: (reviews ?? []).map((r) => ({
+        id: r.id,
+        rating: r.rating,
+        comment: r.comment,
+        createdAt: r.createdAt,
+        author: `${r.user.firstName} ${r.user.lastName.charAt(0)}.`.trim(),
+      })),
+    });
+  } catch (error) {
+    console.error('Error fetching reviews:', error);
+    res.status(500).json({ error: 'Failed to fetch reviews' });
+  }
+});
+
+// Laisser (ou modifier) son avis : un seul avis par utilisateur et par produit.
+router.post('/:slug/reviews', authenticate, async (req: Request, res: Response) => {
+  try {
+    const { rating, comment } = req.body ?? {};
+
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      return res.status(400).json({ error: 'La note doit être un entier entre 1 et 5' });
+    }
+    if (comment !== undefined && comment !== null && (typeof comment !== 'string' || comment.length > 1000)) {
+      return res.status(400).json({ error: 'Le commentaire est limité à 1000 caractères' });
+    }
+    if (req.user?.role === 'platform_admin') {
+      return res.status(403).json({ error: "Les administrateurs ne peuvent pas noter les produits" });
+    }
+
+    const product = await prisma.product.findUnique({ where: { slug: req.params.slug } });
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    const text = typeof comment === 'string' && comment.trim() ? comment.trim() : null;
+    const review = await prisma.review.upsert({
+      where: { productId_userId: { productId: product.id, userId: req.user!.userId } },
+      create: { productId: product.id, userId: req.user!.userId, rating, comment: text },
+      update: { rating, comment: text },
+    });
+
+    await invalidateProductCache();
+    res.status(201).json({ success: true, review: { id: review.id, rating: review.rating, comment: review.comment } });
+  } catch (error) {
+    console.error('Error saving review:', error);
+    res.status(500).json({ error: "Impossible d'enregistrer l'avis" });
   }
 });
 

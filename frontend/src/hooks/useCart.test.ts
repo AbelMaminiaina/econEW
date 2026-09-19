@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useCart } from './useCart';
 import type { CartItem } from '@/types';
@@ -125,5 +125,56 @@ describe('useCart', () => {
   it('reports isHydrated as true after mount', () => {
     const { result } = renderHook(() => useCart());
     expect(result.current.isHydrated).toBe(true);
+  });
+});
+
+describe('sanitizeCartItems (paniers d’un ancien format)', () => {
+  it('complète les champs manquants d’une ancienne ligne', async () => {
+    const { sanitizeCartItems } = await import('./useCart');
+    const [line] = sanitizeCartItems([
+      { productId: 'old', name: 'Ancien', slug: 'ancien', price: 1000, quantity: 2, image: '/images/products/a.jpg' },
+    ]);
+
+    expect(line.priceTiers).toEqual([]);
+    expect(line.moq).toBe(1);
+    expect(line.unit).toBe('pièce');
+    expect(line.image).toBe('/electro/img/product-3.png');
+    expect(line.sellerId).toBeNull();
+  });
+
+  it('écarte les lignes inutilisables et garde les bonnes', async () => {
+    const { sanitizeCartItems } = await import('./useCart');
+    const result = sanitizeCartItems([
+      null,
+      'texte',
+      { productId: 'sans-prix', name: 'X', slug: 'x', quantity: 1 },
+      { productId: 'quantite-nulle', name: 'X', slug: 'x', price: 10, quantity: 0 },
+      { ...item1, priceTiers: [{ minQty: 5, unitPrice: 900 }, { minQty: 'abc' }] },
+    ]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].priceTiers).toEqual([{ minQty: 5, unitPrice: 900 }]);
+  });
+
+  it('ne plante pas si le stockage ne contient pas un tableau', async () => {
+    const { sanitizeCartItems } = await import('./useCart');
+    expect(sanitizeCartItems(undefined)).toEqual([]);
+    expect(sanitizeCartItems({ items: 3 })).toEqual([]);
+  });
+
+  it('relit un panier ancien depuis le localStorage sans erreur', async () => {
+    localStorage.setItem(
+      'b2b-cart',
+      JSON.stringify({
+        state: { items: [{ productId: 'old', name: 'Ancien', slug: 'a', price: 500, quantity: 3 }] },
+        version: 0,
+      })
+    );
+    vi.resetModules();
+    const { useCart: freshUseCart } = await import('./useCart');
+    const { result } = renderHook(() => freshUseCart());
+
+    expect(result.current.items).toHaveLength(1);
+    expect(result.current.items[0].priceTiers).toEqual([]);
   });
 });

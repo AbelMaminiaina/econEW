@@ -63,10 +63,8 @@ export function useCategories() {
 export function useProductCategories() {
   const { categories, loading } = useCategories();
 
-  // Filtrer uniquement les catégories de produits (exclure poules, accessoires, etc.)
-  const productCategories = categories.filter(c =>
-    ['porc', 'poulet', 'poisson', 'akanga', 'caille', 'transformes', 'oeufs-frais', 'oeufs-fecondes'].includes(c.slug)
-  );
+  // Toutes les catégories actives sont des catégories de produits
+  const productCategories = categories.filter((c) => c.isActive);
 
   return { categories: productCategories, loading };
 }

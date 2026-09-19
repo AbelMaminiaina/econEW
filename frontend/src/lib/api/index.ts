@@ -5,3 +5,5 @@ export * from './contact';
 export * from './checkout';
 export * from './auth';
 export * from './companies';
+export * from './reviews';
+export * from './seller';

@@ -46,15 +46,10 @@ router.get('/:id', authenticate, async (req: Request, res: Response) => {
   }
 });
 
-// Admin: approuver une entreprise (fixe les conditions de paiement)
+// Admin: approuver une entreprise (peut acheter avec prix dégressifs et publier des produits)
 router.patch('/:id/approve', authenticate, requirePlatformAdmin, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { paymentTerms, creditLimit } = req.body;
-
-    if (paymentTerms !== undefined && paymentTerms !== 'net_30' && paymentTerms !== 'net_60') {
-      return res.status(400).json({ error: 'Conditions de paiement invalides' });
-    }
 
     const existing = await prisma.company.findUnique({ where: { id } });
     if (!existing) {
@@ -63,18 +58,12 @@ router.patch('/:id/approve', authenticate, requirePlatformAdmin, async (req: Req
 
     const company = await prisma.company.update({
       where: { id },
-      data: {
-        status: 'approved',
-        paymentTerms: paymentTerms ?? existing.paymentTerms ?? 'net_30',
-        creditLimit: creditLimit ?? existing.creditLimit,
-        rejectionReason: null,
-      },
+      data: { status: 'approved', rejectionReason: null },
     });
 
     sendCompanyApprovedEmail({
       companyName: company.name,
       contactEmail: company.contactEmail,
-      paymentTerms: company.paymentTerms!,
     }).catch((err) => console.error('Failed to send company approval email:', err));
 
     res.json({ success: true, company });

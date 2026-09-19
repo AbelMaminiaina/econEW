@@ -1,0 +1,136 @@
+/* Compléments propres au projet, chargés APRÈS bootstrap.min.css et style.css du template
+   (qui restent intacts). Sert à l'intégration Next.js : panneau d'achat des cartes produit,
+   cœur des favoris, étoiles, animations. */
+
+body {
+    color: #919191;
+}
+
+/* Le template masque le panneau d'achat tant que la carte n'est pas survolée (écrans >= lg) ;
+   sur tablette et mobile (pas de survol) il reste visible sous la carte. */
+@media (max-width: 991.98px) {
+    .product .product-item .product-item-add {
+        position: static;
+        opacity: 1;
+        margin-bottom: 0 !important;
+    }
+    .product .product-item:hover .product-item-inner {
+        border-bottom: 1px solid #dee2e6 !important;
+    }
+}
+
+/* Cartes : légère remontée au survol */
+.product .product-item {
+    transition: transform .4s ease;
+}
+.product .product-item:hover {
+    transform: translateY(-6px);
+    z-index: 5;
+}
+
+/* Étoiles qui « sautent » au survol de la carte */
+@keyframes electro-star-pop {
+    0%, 100% { transform: scale(1) rotate(0); }
+    50% { transform: scale(1.35) rotate(-12deg); }
+}
+.product .product-item:hover .star-pop {
+    animation: electro-star-pop .5s ease-out both;
+}
+
+/* Cœur des favoris */
+.btn-wish {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    border: 1px solid #dee2e6;
+    background: #fff;
+    color: var(--bs-primary);
+    transition: .5s;
+}
+.btn-wish:hover,
+.btn-wish.active {
+    background: var(--bs-secondary);
+    border-color: var(--bs-secondary);
+    color: #fff;
+}
+.btn-wish:active {
+    transform: scale(.8);
+}
+
+/* Étoiles de notation */
+.rating-stars {
+    position: relative;
+    display: inline-block;
+    line-height: 1;
+    white-space: nowrap;
+    color: #ced4da;
+}
+.rating-stars .rating-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    color: var(--bs-primary);
+}
+
+/* Toasts / éléments Next.js */
+.nav-bar .navbar-nav .nav-link.active {
+    color: var(--bs-white);
+}
+.page-header-image {
+    background-attachment: fixed;
+}
+
+/* Accessibilité : focus visible sur les liens et boutons ronds */
+.btn:focus-visible,
+.btn-wish:focus-visible {
+    outline: 2px solid var(--bs-secondary);
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .product .product-item,
+    .product .product-item:hover .star-pop {
+        transition: none;
+        animation: none;
+        transform: none;
+    }
+}
+
+/* Pastille « Nouveau » / « Promo » : libellés français plus longs que « New » / « Sale » */
+.product .product-item .product-item-inner .product-item-inner-item .product-new,
+.product .product-item .product-item-inner .product-item-inner-item .product-sale {
+    font-size: .68rem;
+    font-weight: 600;
+    text-align: center;
+    line-height: 1.1;
+}
+
+/* Vue liste (.products-mini-item) : sans survol (tablette / mobile) la barre d'achat reste visible */
+@media (max-width: 991.98px) {
+    .products .products-mini .products-mini-item .products-mini-add {
+        position: static;
+        opacity: 1;
+        margin-bottom: 0 !important;
+        flex-wrap: wrap;
+        gap: .75rem;
+    }
+    .products .products-mini .products-mini-item .products-mini-icon {
+        display: none;
+    }
+}
+
+/* Barre d'achat de la vue liste : elle déborde sous la carte au survol, au-dessus de la rangée suivante */
+.products .products-mini .products-mini-item:hover {
+    z-index: 10;
+}
+
+/* Étoiles de la barre latérale « Produits en vedette » */
+.shop .featured-product .rating-stars {
+    font-size: .9rem;
+}

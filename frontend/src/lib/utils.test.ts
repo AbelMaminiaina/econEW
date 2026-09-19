@@ -10,6 +10,7 @@ import {
   getProductivityLabel,
   getProductivityColor,
   getCategoryLabel,
+  resolveUnitPrice,
   getBadgeLabel,
   generateOrderId,
   validateEmail,
@@ -107,11 +108,11 @@ describe('getProductivityColor', () => {
 
 describe('getCategoryLabel', () => {
   it('normalizes dashes to underscores before lookup', () => {
-    expect(getCategoryLabel('oeufs-frais')).toBe('Oeufs frais');
+    expect(getCategoryLabel('ordinateurs')).toBe('Ordinateurs & Écrans');
   });
 
   it('resolves an underscore category directly', () => {
-    expect(getCategoryLabel('oeufs_fecondes')).toBe('Oeufs fécondés');
+    expect(getCategoryLabel('electronique')).toBe('Électronique & Photo');
   });
 
   it('falls back to the raw value for unknown categories', () => {
@@ -273,5 +274,12 @@ describe('formatQuantity', () => {
   it('adds (s) to countable units', () => {
     expect(formatQuantity(500, 'pièce')).toBe('500 pièce(s)');
     expect(formatQuantity(25, 'carton')).toBe('25 carton(s)');
+  });
+});
+
+describe('resolveUnitPrice (paliers absents)', () => {
+  it('retombe sur le prix de base quand les paliers sont absents', () => {
+    expect(resolveUnitPrice(1000, undefined, 50)).toBe(1000);
+    expect(resolveUnitPrice(1000, null, 50)).toBe(1000);
   });
 });

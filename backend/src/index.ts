@@ -7,11 +7,18 @@ import newsletterRouter from './routes/newsletter.js';
 import categoriesRouter from './routes/categories.js';
 import authRouter from './routes/auth.js';
 import companiesRouter from './routes/companies.js';
+import sellerRouter from './routes/seller.js';
+import sellersRouter from './routes/sellers.js';
+import paymentsRouter from './routes/payments.js';
+import adminProductsRouter from './routes/adminProducts.js';
 import { connectRedis, redis, isRedisAvailable } from './lib/redis.js';
 import { authenticate, requirePlatformAdmin } from './middleware/auth.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// Derrière nginx : req.ip doit être l'adresse du client (limitation de débit des commandes invitées)
+app.set('trust proxy', 1);
 
 // Middleware
 app.use(cors({
@@ -29,6 +36,10 @@ app.use('/api/newsletter', newsletterRouter);
 app.use('/api/categories', categoriesRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/companies', companiesRouter);
+app.use('/api/seller', sellerRouter);
+app.use('/api/sellers', sellersRouter);
+app.use('/api/payments', paymentsRouter);
+app.use('/api/admin/products', adminProductsRouter);
 
 // Health check with Redis status
 app.get('/api/health', async (_req, res) => {

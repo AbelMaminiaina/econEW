@@ -2,17 +2,16 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import {
   MapPin,
   Mail,
   Clock,
   Facebook,
   Instagram,
-  Send,
+  ChevronRight,
   ShieldCheck,
+  ArrowUp,
 } from 'lucide-react';
-import { Button, Input } from '@/components/ui';
 
 const footerLinks = {
   produits: [
@@ -25,7 +24,7 @@ const footerLinks = {
   ],
   services: [
     { name: 'Livraison', href: '/services#livraison' },
-    { name: 'Facturation & paiement', href: '/services#facturation' },
+    { name: 'Paiement Mobile Money', href: '/services#paiement' },
   ],
   legal: [
     { name: 'Mentions légales', href: '/mentions-legales' },
@@ -46,183 +45,154 @@ export function Footer() {
     setEmail('');
   };
 
+  const linkClass =
+    'flex items-center py-0.5 text-warm-300 transition-all duration-500 hover:tracking-wide hover:text-electro-secondary';
+
+  const columns = [
+    { title: 'Nos produits', links: footerLinks.produits },
+    { title: 'Informations', links: [...footerLinks.informations, ...footerLinks.services] },
+    { title: 'Légal', links: footerLinks.legal },
+  ];
+
+  const infoCards = [
+    {
+      icon: MapPin,
+      title: 'Adresse',
+      content: <>LE 187<br />Ambohitsoa Ambavatonelina, Madagascar</>,
+    },
+    {
+      icon: Mail,
+      title: 'Écrivez-nous',
+      content: (
+        <a href="mailto:contact@all.mg" className="transition-colors hover:text-electro-secondary">
+          contact@all.mg
+        </a>
+      ),
+    },
+    {
+      icon: Clock,
+      title: 'Horaires',
+      content: <>Lun - Ven : 9h - 18h<br />Sam : 9h - 12h · Dim : fermé</>,
+    },
+    {
+      icon: ShieldCheck,
+      title: 'Paiement sécurisé',
+      content: <>MVola, Orange Money et Airtel Money</>,
+    },
+  ];
+
   return (
-    <footer className="bg-warm-800 text-warm-200">
-      {/* Newsletter section */}
-      <div className="bg-prairie-700">
-        <div className="container mx-auto px-4 py-12">
-          <div className="max-w-2xl mx-auto text-center">
-            <h3 className="text-2xl font-display font-bold text-white mb-2">
-              Restez informé de nos actualités
-            </h3>
-            <p className="text-prairie-100 mb-6">
-              Recevez nos nouveautés catalogue, nos offres tarifaires
-              et les actualités de la plateforme.
-            </p>
-            {isSubscribed ? (
-              <p className="text-white font-medium">
-                Merci pour votre inscription ! Vous recevrez bientôt nos actualités.
+    <footer>
+      <div className="bg-electro-dark py-16 text-warm-300">
+        <div className="container mx-auto px-4">
+          {/* Cartes d'information */}
+          <div className="mb-12 grid grid-cols-1 gap-4 rounded bg-white/[0.03] sm:grid-cols-2 xl:grid-cols-4">
+            {infoCards.map(({ icon: Icon, title, content }) => (
+              <div key={title} className="p-6">
+                <div className="mb-4 flex h-[70px] w-[70px] items-center justify-center rounded-full bg-electro-secondary">
+                  <Icon className="h-8 w-8 text-electro-primary" />
+                </div>
+                <h4 className="mb-2 text-xl font-medium text-white">{title}</h4>
+                <p className="text-sm leading-7">{content}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 gap-10 md:grid-cols-2 xl:grid-cols-4">
+            {/* Newsletter */}
+            <div>
+              <Link href="/" className="mb-4 inline-block">
+                <span className="font-display text-3xl font-medium text-electro-primary">All</span>
+              </Link>
+              <h4 className="mb-3 text-xl font-medium text-electro-primary">Newsletter</h4>
+              <p className="mb-4 text-sm leading-7">
+                Recevez nos nouveautés catalogue, nos offres tarifaires et les actualités de la plateforme.
               </p>
-            ) : (
-              <form
-                onSubmit={handleNewsletterSubmit}
-                className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto"
-              >
-                <Input
-                  type="email"
-                  placeholder="Votre adresse email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  className="flex-1 bg-white"
-                />
-                <Button type="submit" variant="secondary" icon={<Send className="h-4 w-4" />}>
-                  S&apos;inscrire
-                </Button>
-              </form>
-            )}
+              {isSubscribed ? (
+                <p className="font-medium text-white">
+                  Merci pour votre inscription ! Vous recevrez bientôt nos actualités.
+                </p>
+              ) : (
+                <form onSubmit={handleNewsletterSubmit} className="relative">
+                  <input
+                    type="email"
+                    placeholder="Votre adresse email"
+                    aria-label="Votre adresse email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    className="w-full rounded-full border-0 bg-white py-3 pl-5 pr-28 text-sm text-warm-800 placeholder:text-warm-400 focus:outline-none focus:ring-2 focus:ring-electro-primary"
+                  />
+                  <button
+                    type="submit"
+                    className="absolute right-1.5 top-1.5 rounded-full bg-electro-primary px-4 py-2 text-sm font-medium text-white transition-colors duration-500 hover:bg-electro-secondary"
+                  >
+                    S&apos;inscrire
+                  </button>
+                </form>
+              )}
+            </div>
+
+            {columns.map((column) => (
+              <div key={column.title}>
+                <h4 className="mb-4 text-xl font-medium text-electro-primary">{column.title}</h4>
+                <ul>
+                  {column.links.map((link) => (
+                    <li key={link.name}>
+                      <Link href={link.href} className={linkClass}>
+                        <ChevronRight className="mr-2 h-4 w-4 shrink-0" />
+                        {link.name}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </div>
         </div>
       </div>
 
-      {/* Main footer */}
-      <div className="container mx-auto px-4 py-12">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Brand */}
-          <div className="lg:col-span-3">
-            <Link href="/" className="inline-block mb-4">
-              <span className="font-display text-3xl font-bold text-white">All</span>
-            </Link>
-            <p className="text-warm-400 text-sm mb-6">
-              All est une plateforme de vente en gros pour professionnels à
-              Madagascar. Tarifs dégressifs par quantité, facturation à 30/60
-              jours et livraison à Antananarivo pour les entreprises approuvées.
-            </p>
-            <div className="space-y-3 text-sm">
-              <div className="flex items-start gap-2">
-                <MapPin className="h-5 w-5 text-prairie-500 shrink-0 mt-0.5" />
-                <span>LE 187<br />Ambohitsoa Ambavatonelina, Madagascar</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Mail className="h-5 w-5 text-prairie-500 shrink-0" />
-                <a href="mailto:contact@all.mg" className="hover:text-white transition-colors">
-                  contact@all.mg
-                </a>
-              </div>
-              <div className="flex items-start gap-2">
-                <Clock className="h-5 w-5 text-prairie-500 shrink-0 mt-0.5" />
-                <span>
-                  Lundi - Vendredi : 9h - 18h<br />
-                  Samedi : 9h - 12h<br />
-                  Dimanche : Fermé
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Links - Centered */}
-          <div className="lg:col-span-9 grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-            <div>
-              <h4 className="text-white font-semibold mb-4">Nos Produits</h4>
-              <ul className="space-y-2">
-                {footerLinks.produits.map((link) => (
-                  <li key={link.name}>
-                    <Link
-                      href={link.href}
-                      className="text-sm text-warm-400 hover:text-white transition-colors"
-                    >
-                      {link.name}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="text-white font-semibold mb-4">Informations</h4>
-              <ul className="space-y-2">
-                {footerLinks.informations.map((link) => (
-                  <li key={link.name}>
-                    <Link
-                      href={link.href}
-                      className="text-sm text-warm-400 hover:text-white transition-colors"
-                    >
-                      {link.name}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="text-white font-semibold mb-4">Services</h4>
-              <ul className="space-y-2">
-                {footerLinks.services.map((link) => (
-                  <li key={link.name}>
-                    <Link
-                      href={link.href}
-                      className="text-sm text-warm-400 hover:text-white transition-colors"
-                    >
-                      {link.name}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="text-white font-semibold mb-4">Légal</h4>
-              <ul className="space-y-2">
-                {footerLinks.legal.map((link) => (
-                  <li key={link.name}>
-                    <Link
-                      href={link.href}
-                      className="text-sm text-warm-400 hover:text-white transition-colors"
-                    >
-                      {link.name}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </div>
-
-        {/* Bottom bar */}
-        <div className="mt-12 pt-8 border-t border-warm-700">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-sm text-warm-400">
-              &copy; {new Date().getFullYear()} All. Tous droits réservés.
-            </p>
-            <div className="flex items-center gap-4">
-              <a
-                href="https://facebook.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="p-2 rounded-full bg-warm-700 hover:bg-prairie-600 transition-colors"
-                aria-label="Facebook"
-              >
-                <Facebook className="h-5 w-5" />
-              </a>
-              <a
-                href="https://instagram.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="p-2 rounded-full bg-warm-700 hover:bg-prairie-600 transition-colors"
-                aria-label="Instagram"
-              >
-                <Instagram className="h-5 w-5" />
-              </a>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 bg-prairie-700 rounded-full px-3 py-1">
-                <ShieldCheck className="h-5 w-5 text-prairie-300" />
-                <span className="text-sm text-prairie-200">Comptes professionnels vérifiés</span>
-              </div>
-            </div>
+      {/* Copyright + attribution (obligatoire, cf. licence du template Electro) */}
+      <div className="border-t border-white/10 bg-electro-primary py-4 text-white">
+        <div className="container mx-auto flex flex-col items-center justify-between gap-4 px-4 text-sm md:flex-row">
+          <span>
+            &copy; {new Date().getFullYear()} All. Tous droits réservés.
+          </span>
+          <div className="flex items-center gap-3">
+            <a
+              href="https://facebook.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-full bg-white/20 p-2 transition-colors hover:bg-white/40"
+              aria-label="Facebook"
+            >
+              <Facebook className="h-4 w-4" />
+            </a>
+            <a
+              href="https://instagram.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-full bg-white/20 p-2 transition-colors hover:bg-white/40"
+              aria-label="Instagram"
+            >
+              <Instagram className="h-4 w-4" />
+            </a>
           </div>
         </div>
       </div>
+
+      {/* Retour en haut */}
+      <a
+        href="#top"
+        onClick={(e) => {
+          e.preventDefault();
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+        aria-label="Retour en haut"
+        className="fixed bottom-6 right-6 z-30 flex h-11 w-11 items-center justify-center rounded-full bg-electro-primary text-white shadow-lg transition-colors duration-500 hover:bg-electro-secondary"
+      >
+        <ArrowUp className="h-5 w-5" />
+      </a>
     </footer>
   );
 }

@@ -35,7 +35,6 @@ const handler = NextAuth({
           companyId: data.company?.id ?? null,
           companyName: data.company?.name ?? null,
           companyStatus: data.company?.status ?? null,
-          paymentTerms: data.company?.paymentTerms ?? null,
           accessToken: data.token,
         };
       },
@@ -50,7 +49,6 @@ const handler = NextAuth({
         token.companyId = user.companyId;
         token.companyName = user.companyName;
         token.companyStatus = user.companyStatus;
-        token.paymentTerms = user.paymentTerms;
       }
       return token;
     },
@@ -61,7 +59,6 @@ const handler = NextAuth({
         session.user.companyId = token.companyId;
         session.user.companyName = token.companyName;
         session.user.companyStatus = token.companyStatus;
-        session.user.paymentTerms = token.paymentTerms;
       }
       return session;
     },

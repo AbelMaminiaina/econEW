@@ -13,12 +13,10 @@ export async function listCompanies(token: string, status?: string): Promise<Com
 
 export async function approveCompany(
   id: string,
-  data: { paymentTerms: 'net_30' | 'net_60'; creditLimit?: number },
   token: string
 ): Promise<{ success: boolean; company: Company }> {
   return fetchAPI(`/companies/${id}/approve`, {
     method: 'PATCH',
-    body: JSON.stringify(data),
     token,
   });
 }

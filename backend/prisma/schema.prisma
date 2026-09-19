@@ -34,6 +34,13 @@ enum ProductBadge {
   populaire
 }
 
+// Modération des produits publiés par les entreprises vendeuses
+enum ProductStatus {
+  pending
+  approved
+  rejected
+}
+
 // Statut d'un compte professionnel
 enum CompanyStatus {
   pending
@@ -50,7 +57,24 @@ enum UserRole {
   customer // Particulier (achat au détail, sans entreprise)
 }
 
-// Conditions de paiement différé accordées à une entreprise
+// Moyen de paiement d'une commande : Mobile Money (paiement vérifié manuellement).
+// Une carte bancaire nécessitera un prestataire de paiement : à ajouter ici et dans lib/payments.ts.
+enum PaymentMethod {
+  mvola
+  orange_money
+  airtel_money
+}
+
+// Cycle de paiement d'une commande : en attente du paiement du client -> référence de transaction
+// transmise -> confirmé par un administrateur (ou refusé, le client peut alors ressaisir).
+enum PaymentStatus {
+  awaiting
+  submitted
+  paid
+  rejected
+}
+
+// Conditions de paiement différé accordées à une entreprise (historique : le paiement différé n'existe plus)
 enum PaymentTerms {
   net_30
   net_60
@@ -79,7 +103,9 @@ model Company {
 
   users            User[]
   addresses        Address[]
-  orders           Order[]
+  orders           Order[]   @relation("BuyerOrders")
+  sellerOrders     Order[]   @relation("SellerOrders")
+  products         Product[] @relation("SellerProducts")
   invoices         Invoice[]
 
   createdAt        DateTime      @default(now())
@@ -103,6 +129,7 @@ model User {
 
   addresses    Address[]
   orders       Order[]
+  reviews      Review[]
 
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -159,9 +186,37 @@ model Product {
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 
-  orderItems       OrderItem[]
+  // Publication par une entreprise vendeuse (null = produit de la plateforme)
+  sellerId         String?
+  seller           Company?         @relation("SellerProducts", fields: [sellerId], references: [id])
+  status           ProductStatus    @default(approved)
+  rejectionReason  String?
 
+  orderItems       OrderItem[]
+  reviews          Review[]
+
+  @@index([sellerId])
+  @@index([status])
   @@map("products")
+}
+
+// Avis clients : une note de 1 à 5 (et un commentaire facultatif) par utilisateur et par produit
+model Review {
+  id        String   @id @default(uuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  rating    Int      // 1 à 5
+  comment   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, userId])
+  @@index([productId])
+  @@map("reviews")
 }
 
 // Clients (historique B2C — conservé en lecture seule, plus utilisé pour les nouvelles commandes)
@@ -233,15 +288,37 @@ model Order {
 
   // Commandes B2B
   companyId      String?
-  company        Company?       @relation(fields: [companyId], references: [id])
+  company        Company?       @relation("BuyerOrders", fields: [companyId], references: [id])
   userId         String?
   user           User?          @relation(fields: [userId], references: [id])
 
   addressId      String?
   address        Address?       @relation(fields: [addressId], references: [id])
 
+  // Vendeur (entreprise qui a publié les produits) ; null = produits de la plateforme.
+  // Un panier multi-vendeurs est scindé en une commande par vendeur (même checkoutGroup).
+  // Commande sans compte (invité) : coordonnées saisies au paiement, paiement à la livraison/retrait
+  guestName      String?
+  guestEmail     String?
+  guestPhone     String?
+
+  sellerId       String?
+  seller         Company?       @relation("SellerOrders", fields: [sellerId], references: [id])
+  checkoutGroup  String?
+
   status         OrderStatus    @default(pending)
   deliveryMethod DeliveryMethod
+
+  // Paiement Mobile Money (obligatoire) : la commande n'avance qu'une fois le paiement confirmé
+  paymentMethod          PaymentMethod?
+  paymentStatus          PaymentStatus  @default(awaiting)
+  paymentReference       String?        // Référence de la transaction fournie par le client
+  paymentPayerPhone      String?        // Numéro Mobile Money depuis lequel il a payé
+  paymentSubmittedAt     DateTime?
+  paidAt                 DateTime?
+  paymentRejectionReason String?
+  // Stock déjà décrémenté pour cette commande (à restituer en cas d'annulation)
+  stockReserved          Boolean        @default(false)
 
   subtotal       Int            // Prix en Ariary
   shippingCost   Int            // Prix en Ariary
@@ -259,6 +336,11 @@ model Order {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
+  @@index([sellerId])
+  @@index([checkoutGroup])
+  @@index([guestEmail])
+  @@index([paymentStatus])
+  @@index([paymentReference])
   @@map("orders")
 }
 

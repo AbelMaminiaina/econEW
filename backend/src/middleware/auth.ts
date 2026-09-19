@@ -60,3 +60,16 @@ export async function requireCanOrder(req: Request, res: Response, next: NextFun
   }
   return requireApprovedCompany(req, res, next);
 }
+
+// Comme `authenticate`, mais sans exiger de jeton : sans en-tête Authorization la requête continue
+// comme visiteur (commande sans compte). Un jeton présent mais invalide reste refusé.
+export function optionalAuthenticate(req: Request, res: Response, next: NextFunction) {
+  if (!req.headers.authorization) return next();
+  return authenticate(req, res, next);
+}
+
+// Visiteur (sans compte) : autorisé à commander ; connecté : mêmes règles que requireCanOrder.
+export async function canOrderOrGuest(req: Request, res: Response, next: NextFunction) {
+  if (!req.user) return next();
+  return requireCanOrder(req, res, next);
+}

@@ -1,3 +1,5 @@
+import type { PaymentMethodId, PaymentStatus } from '@/lib/api/payments';
+
 // Types pour les produits
 export interface Product {
   id: string;
@@ -20,9 +22,33 @@ export interface Product {
   estimatedWeightKg?: number | null;
   freeShipping: boolean;
   availableFrom?: string | null;
+  // Avis clients : moyenne (null sans avis) et nombre d'avis
+  rating?: number | null;
+  reviewCount?: number;
+  // Entreprise vendeuse (null = produit de la plateforme) et statut de modération
+  seller?: { id: string; name: string } | null;
+  status?: ProductStatus;
+  rejectionReason?: string | null;
+  isActive?: boolean;
   createdAt: string;
   updatedAt: string;
 }
+
+export interface ProductReview {
+  id: string;
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+  author: string;
+}
+
+export interface ProductReviews {
+  average: number | null;
+  count: number;
+  reviews: ProductReview[];
+}
+
+export type ProductStatus = 'pending' | 'approved' | 'rejected';
 
 export type ProductBadge = 'bio' | 'plein_air' | 'nouveau' | 'promo' | 'populaire';
 
@@ -52,6 +78,9 @@ export interface CartItem {
   moq: number;
   unit: string;
   priceTiers: PriceTier[];
+  // Vendeur : sert à scinder le panier en une commande par vendeur
+  sellerId?: string | null;
+  sellerName?: string | null;
 }
 
 // Types pour les témoignages
@@ -128,10 +157,6 @@ export type OrderStatus =
   | 'delivered'
   | 'cancelled';
 
-export type InvoiceStatus = 'sent' | 'paid' | 'overdue' | 'cancelled';
-
-export type PaymentTerms = 'net_30' | 'net_60';
-
 export type DeliveryMethod = 'standard' | 'express' | 'retrait';
 
 export interface OrderAddress {
@@ -156,10 +181,8 @@ export interface CompanyOrder {
   shippingCost: number;
   total: number;
   deliveryMethod: DeliveryMethod;
-  paymentTerms?: PaymentTerms | null;
-  dueDate?: string | null;
-  invoiceNumber?: string | null;
-  invoiceStatus?: InvoiceStatus | null;
+  paymentMethod?: PaymentMethodId | null;
+  paymentStatus?: PaymentStatus;
   cancelReason?: string | null;
   createdAt: string;
   address?: OrderAddress | null;
@@ -177,8 +200,6 @@ export interface Company {
   legalName?: string | null;
   taxId: string;
   status: CompanyStatus;
-  paymentTerms?: PaymentTerms | null;
-  creditLimit?: number | null;
   contactEmail: string;
   contactPhone?: string | null;
   rejectionReason?: string | null;

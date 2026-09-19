@@ -33,10 +33,13 @@ const baseOrder = {
   subtotal: 30000,
   shippingCost: 25000,
   total: 55000,
-  status: 'processing',
-  invoiceNumber: 'INV-TEST123',
-  dueDate: new Date('2026-02-01T00:00:00Z'),
-  paymentTerms: 'net_30' as const,
+  status: 'pending',
+  payment: {
+    methodLabel: 'MVola',
+    number: '034 00 000 00',
+    accountName: 'All',
+    totalToPay: 55000,
+  },
   createdAt: new Date('2026-01-01T10:00:00Z'),
 };
 
@@ -71,15 +74,17 @@ describe('sendOrderConfirmationEmail', () => {
     expect(sendMailMock).toHaveBeenCalledTimes(2);
   });
 
-  it('includes the order number, invoice number, total and due date in the customer email', async () => {
+  it('includes the order number, total and Mobile Money instructions in the customer email', async () => {
     await sendOrderConfirmationEmail(baseOrder);
 
     const customerCall = sendMailMock.mock.calls[0][0];
     expect(customerCall.to).toBe('jean@example.com');
     expect(customerCall.subject).toContain('ORD-TEST123');
-    expect(customerCall.subject).toContain('INV-TEST123');
+    expect(customerCall.subject).toContain('En attente de paiement');
     expect(customerCall.html).toContain('ORD-TEST123');
-    expect(customerCall.html).toContain('INV-TEST123');
+    expect(customerCall.html).toContain('MVola');
+    expect(customerCall.html).toContain('034 00 000 00');
+    expect(customerCall.html).not.toContain('Facture');
     expect(customerCall.html).toMatch(/55\s000\sAr/);
   });
 
@@ -134,7 +139,7 @@ describe('sendAdminNotificationEmail', () => {
     );
   });
 
-  it('lists every ordered item and the invoice due date in the notification body', async () => {
+  it('lists every ordered item and the payment method in the notification body', async () => {
     await sendAdminNotificationEmail({
       ...baseOrder,
       items: [
@@ -146,7 +151,7 @@ describe('sendAdminNotificationEmail', () => {
     const call = sendMailMock.mock.calls[0][0];
     expect(call.html).toContain('Carton emballage x2');
     expect(call.html).toContain('Ramette papier x3');
-    expect(call.html).toContain('INV-TEST123');
+    expect(call.html).toContain('MVola');
   });
 
   it('flags a reservation item in the admin notification body', async () => {

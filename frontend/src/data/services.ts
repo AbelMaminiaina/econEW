@@ -31,31 +31,31 @@ Chaque commande est accompagnée d'un suivi de statut consultable dans "Mes comm
     available: true,
   },
   {
-    id: 'facturation',
-    title: 'Facturation & paiement différé',
-    slug: 'facturation',
-    description: 'Commandez maintenant, payez à 30 ou 60 jours. Les conditions de paiement sont fixées lors de l\'approbation de votre compte.',
-    longDescription: `All propose la facturation à terme aux entreprises dont le compte a été approuvé par notre équipe.
+    id: 'paiement',
+    title: 'Paiement Mobile Money',
+    slug: 'paiement',
+    description: 'Payez en ligne par MVola, Orange Money ou Airtel Money, avec ou sans compte. Votre commande est traitée dès que votre paiement est vérifié.',
+    longDescription: `Le paiement se fait en ligne, par Mobile Money, au moment de la commande. Il est demandé à tous les clients : particuliers, entreprises et visiteurs sans compte.
 
 **Comment ça marche :**
-- Vos conditions de paiement (Net 30 ou Net 60) sont définies à l'approbation de votre compte
-- Chaque commande génère automatiquement une facture avec sa date d'échéance
-- Vous retrouvez toutes vos factures et leur statut dans "Mes commandes"
+1. Vous choisissez votre opérateur (MVola, Orange Money ou Airtel Money) en validant votre commande
+2. Nous vous indiquons le montant exact et le numéro à créditer
+3. Vous envoyez le montant depuis votre téléphone puis saisissez la référence de la transaction reçue par SMS
+4. Notre équipe vérifie le paiement et vous prévient par e-mail : votre commande est alors traitée
 
-**Avantages :**
-- Meilleure gestion de trésorerie pour votre entreprise
-- Pas de paiement à passer au moment de la commande
-- Historique de facturation centralisé
-
-Un plafond de crédit peut être associé à votre compte selon votre profil.`,
+**À savoir :**
+- Un seul paiement couvre toutes les commandes d'un même panier, même de plusieurs vendeurs
+- Si un paiement ne peut pas être validé, vous en connaissez le motif et pouvez saisir une nouvelle référence
+- Suivez l'état de votre paiement à tout moment dans « Suivi de commande »
+- Le paiement par carte bancaire n'est pas encore disponible`,
     icon: 'CreditCard',
     features: [
-      'Facturation Net 30 ou Net 60',
-      'Facture générée automatiquement',
-      'Historique centralisé',
-      'Plafond de crédit personnalisé',
+      'MVola, Orange Money, Airtel Money',
+      'Aucun compte nécessaire',
+      'Vérification du paiement par notre équipe',
+      'Confirmation par e-mail',
     ],
-    pricing: 'Selon conditions accordées à votre compte',
+    pricing: 'Aucun frais ajouté par la plateforme',
     available: true,
   },
   {
@@ -69,18 +69,19 @@ Un plafond de crédit peut être associé à votre compte selon votre profil.`,
 1. Renseignez les informations de votre entreprise (raison sociale, numéro fiscal, contact)
 2. Créez le compte du premier utilisateur administrateur
 3. Notre équipe valide votre dossier sous 1 à 2 jours ouvrés
-4. Vous recevez un e-mail de confirmation avec vos conditions de paiement
+4. Vous recevez un e-mail de confirmation dès que votre compte est approuvé
 
 **Une fois approuvé :**
 - Accès aux prix et aux paliers de quantité sur tout le catalogue
-- Passage de commande avec facturation différée
-- Suivi des commandes et factures dans votre espace client`,
+- Passage de commande au tarif de gros, paiement par Mobile Money
+- Publication de vos produits (validés par notre équipe) et suivi des commandes reçues
+- Suivi des commandes et des paiements dans votre espace client`,
     icon: 'Building2',
     features: [
       'Validation sous 1-2 jours ouvrés',
       'Accès aux tarifs dégressifs',
       'Un ou plusieurs utilisateurs par entreprise',
-      'Conditions de paiement personnalisées',
+      'Publication de vos produits',
     ],
     pricing: 'Inscription gratuite',
     available: true,
@@ -89,7 +90,7 @@ Un plafond de crédit peut être associé à votre compte selon votre profil.`,
     id: 'support',
     title: 'Support & conseils',
     slug: 'support',
-    description: 'Une question sur une commande, une facture ou un produit ? Notre équipe accompagne les entreprises clientes de All.',
+    description: 'Une question sur une commande, un paiement ou un produit ? Notre équipe accompagne les entreprises clientes de All.',
     longDescription: `Nous accompagnons nos clients professionnels à chaque étape, de l'inscription au suivi des commandes.
 
 **Nos services de support :**
@@ -99,7 +100,7 @@ Un plafond de crédit peut être associé à votre compte selon votre profil.`,
 - Explication des paliers de prix et quantités minimum
 
 *Une fois client :*
-- Suivi de commandes et de facturation
+- Suivi de commandes et de paiements
 - Questions produits et disponibilité
 - Demandes de tarifs pour de gros volumes
 
@@ -109,7 +110,7 @@ Un plafond de crédit peut être associé à votre compte selon votre profil.`,
     icon: 'MessageCircle',
     features: [
       'Accompagnement à l\'inscription',
-      'Support commandes et facturation',
+      'Support commandes et paiements',
       'Réponse sous 24h ouvrées',
       'Demandes de tarifs volumes',
     ],
@@ -128,7 +129,7 @@ export const faqItems: FAQItem[] = [
   {
     id: '2',
     question: 'Combien de temps prend la validation de mon compte ?',
-    answer: 'La validation prend généralement 1 à 2 jours ouvrés. Vous recevez un e-mail de confirmation dès que votre compte est approuvé, avec vos conditions de paiement (Net 30 ou Net 60).',
+    answer: 'La validation prend généralement 1 à 2 jours ouvrés. Vous recevez un e-mail de confirmation dès que votre compte est approuvé.',
     category: 'compte',
   },
   {
@@ -145,14 +146,14 @@ export const faqItems: FAQItem[] = [
   },
   {
     id: '5',
-    question: 'Comment fonctionne le paiement à 30/60 jours ?',
-    answer: 'Une fois votre compte approuvé, chaque commande génère automatiquement une facture avec une échéance à 30 ou 60 jours selon les conditions accordées à votre entreprise. Vous retrouvez vos factures dans "Mes commandes".',
+    question: 'Comment payer ma commande ?',
+    answer: 'Le paiement se fait en ligne par Mobile Money (MVola, Orange Money ou Airtel Money). Après avoir validé votre commande, vous envoyez le montant indiqué au numéro affiché puis saisissez la référence de la transaction. Notre équipe vérifie le paiement et votre commande est traitée. Le paiement par carte bancaire n\'est pas encore disponible.',
     category: 'facturation',
   },
   {
     id: '6',
-    question: 'Où puis-je consulter mes factures ?',
-    answer: 'Toutes vos commandes et factures (numéro, montant, échéance, statut) sont consultables dans votre espace "Mes commandes", accessible depuis le menu de votre compte.',
+    question: 'Comment suivre l\'état de mon paiement ?',
+    answer: 'Depuis « Suivi de commande » : connecté, vous retrouvez toutes vos commandes ; sans compte, saisissez le numéro de commande et l\'e-mail utilisé. Vous y voyez si le paiement est en attente, en cours de vérification ou confirmé.',
     category: 'facturation',
   },
   {

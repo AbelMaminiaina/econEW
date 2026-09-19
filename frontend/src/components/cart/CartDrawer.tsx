@@ -85,7 +85,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                       {/* Image */}
                       <div className="relative w-20 h-20 rounded-md overflow-hidden shrink-0 bg-white">
                         <Image
-                          src={item.image || '/images/placeholder.jpg'}
+                          src={item.image || '/electro/img/product-3.png'}
                           alt={item.name}
                           fill
                           sizes="80px"

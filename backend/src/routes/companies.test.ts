@@ -75,16 +75,15 @@ describe('PATCH /api/companies/:id/approve', () => {
   it('rejects a non-admin user', async () => {
     const res = await request(buildApp())
       .patch('/api/companies/c1/approve')
-      .set('Authorization', `Bearer ${buyerToken}`)
-      .send({ paymentTerms: 'net_30' });
+      .set('Authorization', `Bearer ${buyerToken}`);
 
     expect(res.status).toBe(403);
   });
 
-  it('approves a company and sets payment terms', async () => {
-    prismaMock.company.findUnique.mockResolvedValue({ id: 'c1', paymentTerms: null, creditLimit: null } as any);
+  it('approves a company without any deferred payment terms', async () => {
+    prismaMock.company.findUnique.mockResolvedValue({ id: 'c1' } as any);
     prismaMock.company.update.mockResolvedValue({
-      id: 'c1', name: 'Grossiste Test', status: 'approved', paymentTerms: 'net_60', contactEmail: 'a@b.com',
+      id: 'c1', name: 'Grossiste Test', status: 'approved', contactEmail: 'a@b.com',
     } as any);
 
     const res = await request(buildApp())
@@ -94,17 +93,7 @@ describe('PATCH /api/companies/:id/approve', () => {
 
     expect(res.status).toBe(200);
     const updateArgs = prismaMock.company.update.mock.calls[0][0] as any;
-    expect(updateArgs.data.status).toBe('approved');
-    expect(updateArgs.data.paymentTerms).toBe('net_60');
-  });
-
-  it('rejects invalid payment terms', async () => {
-    const res = await request(buildApp())
-      .patch('/api/companies/c1/approve')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ paymentTerms: 'net_90' });
-
-    expect(res.status).toBe(400);
+    expect(updateArgs.data).toEqual({ status: 'approved', rejectionReason: null });
   });
 });
 
