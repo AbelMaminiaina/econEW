@@ -5,6 +5,9 @@
 # - Aucun port 80/443 utilisé : l'application est exposée sur DEMO_PORT (8081 par défaut),
 #   l'éventuel nginx d'un autre site n'est pas touché.
 # - Postgres et Redis ne sont pas publiés sur l'hôte.
+# - HTTPS optionnel sans domaine : service `tunnel` (Cloudflare Tunnel, profil `tunnel`) qui donne une
+#   adresse https://xxxx.trycloudflare.com. Le site fonctionne sur n'importe quelle adresse (même
+#   origine : API en /api, NextAuth déduit l'adresse des en-têtes X-Forwarded-*).
 #
 # Usage : docker compose -f docker-compose.demo.yml --env-file .env.demo up -d --build
 name: all-demo
@@ -79,14 +82,16 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        # Adresse de l'API vue par le navigateur (même origine que le site, via nginx)
-        NEXT_PUBLIC_API_URL: ${PUBLIC_URL}/api
+        # API vue par le navigateur : chemin relatif (même origine que le site, via nginx). Fonctionne
+        # aussi bien en http://IP:PORT que derrière le tunnel HTTPS, sans connaître l'adresse à l'avance.
+        NEXT_PUBLIC_API_URL: /api
     restart: unless-stopped
     environment:
       NODE_ENV: production
       # Appels serveur-à-serveur (NextAuth, SSR) : directement sur le backend, réseau interne
       BACKEND_URL: http://backend:3001
-      NEXTAUTH_URL: ${PUBLIC_URL}
+      # Pas de NEXTAUTH_URL : NextAuth déduit l'adresse publique des en-têtes X-Forwarded-* (nginx)
+      AUTH_TRUST_HOST: "true"
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET requis}
     depends_on:
       - backend
@@ -103,6 +108,16 @@ services:
     depends_on:
       - frontend
       - backend
+
+  # Tunnel HTTPS Cloudflare (démarré avec --profile tunnel). L'adresse https://xxxx.trycloudflare.com
+  # est affichée dans les logs et change à chaque recréation du conteneur (usage démo).
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://nginx:80
+    depends_on:
+      - nginx
 
 volumes:
   postgres_data:

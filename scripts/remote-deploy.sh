@@ -3,12 +3,14 @@
 # Deploiement de la demo "All" : projet Docker dedie (all-demo), port dedie, aucun impact sur les
 # autres sites du serveur. Fichier volontairement ASCII (transite par stdin depuis PowerShell).
 #
-# Usage : bash -s -- <deploy|status|logs|seed|stop>
-# Variables d'environnement lues : APP_DIR REPO_URL BRANCH DEMO_PORT SERVER_HOST
+# Usage : bash -s -- <deploy|status|logs|seed|stop|url>
+# Variables d'environnement lues : APP_DIR REPO_URL BRANCH DEMO_PORT SERVER_HOST TUNNEL
 #   (creation de .env.demo au premier deploiement) : MVOLA ORANGE AIRTEL ADMIN_EMAIL
+# TUNNEL=1 (defaut) : HTTPS via Cloudflare Tunnel (adresse https://xxxx.trycloudflare.com, sans domaine)
 set -euo pipefail
 
 ACTION="${1:-deploy}"
+TUNNEL="${TUNNEL:-1}"
 APP_DIR="${APP_DIR:-/opt/all}"
 REPO_URL="${REPO_URL:-https://github.com/AbelMaminiaina/econEW.git}"
 BRANCH="${BRANCH:-main}"
@@ -20,7 +22,41 @@ say()  { printf '\n==> %s\n' "$*"; }
 fail() { printf '\nERREUR: %s\n' "$*" >&2; exit 1; }
 
 compose() {
-  docker compose -f docker-compose.demo.yml --env-file .env.demo "$@"
+  # Le profil "tunnel" active le service cloudflared (HTTPS sans domaine)
+  local profile=()
+  if [ "$TUNNEL" = "1" ]; then profile=(--profile tunnel); fi
+  docker compose -f docker-compose.demo.yml --env-file .env.demo ${profile[@]+"${profile[@]}"} "$@"
+}
+
+# Adresse HTTPS courante du tunnel Cloudflare (lue dans les logs du conteneur)
+tunnel_url() {
+  compose logs --no-color tunnel 2>/dev/null \
+    | grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' | tail -1 || true
+}
+
+wait_tunnel() {
+  [ "$TUNNEL" = "1" ] || return 0
+  say "Attente de l'adresse HTTPS (tunnel Cloudflare)"
+  local i url
+  for i in $(seq 1 45); do
+    url="$(tunnel_url)"
+    if [ -n "$url" ]; then
+      # Le nom DNS met quelques secondes a etre propage
+      for _ in $(seq 1 20); do
+        if curl -fsS -o /dev/null -m 8 "$url/api/payments/methods" 2>/dev/null; then
+          echo "Tunnel HTTPS pret : $url"
+          return 0
+        fi
+        sleep 3
+      done
+      echo "Adresse obtenue ($url) mais pas encore joignable : reessayez dans une minute."
+      return 0
+    fi
+    sleep 2
+  done
+  echo "ATTENTION : adresse HTTPS non obtenue (le serveur joint-il internet ?). Logs du tunnel :"
+  compose logs --tail 20 tunnel || true
+  return 0
 }
 
 # Mot de passe aleatoire alphanumerique (pas de caractere special : safe pour .env et docker)
@@ -137,9 +173,12 @@ do_deploy() {
 
   say "Construction et demarrage des conteneurs (le premier build dure plusieurs minutes)"
   compose up -d --build
+  # La config nginx est montee depuis le depot : la recharger (sans coupure) apres une mise a jour
+  compose exec -T nginx nginx -s reload >/dev/null 2>&1 || compose restart nginx >/dev/null 2>&1 || true
 
   wait_ready
   if [ "$NEW_ENV" = "1" ]; then run_seed; fi
+  wait_tunnel
 
   say "Etat des conteneurs"
   compose ps
@@ -149,8 +188,15 @@ do_deploy() {
   echo
   echo "================================================================"
   echo " DEPLOIEMENT TERMINE"
-  echo " Site         : ${url}"
-  echo " Admin        : ${url}/admin/login"
+  if [ "$TUNNEL" = "1" ] && [ -n "$(tunnel_url)" ]; then
+    echo " Site (HTTPS) : $(tunnel_url)      <-- a utiliser (iPhone, partage)"
+    echo " Admin        : $(tunnel_url)/admin/login"
+    echo " Site (HTTP)  : ${url}"
+    echo " NB : l'adresse HTTPS change si le conteneur du tunnel est recree ; retrouvez-la avec -Action url"
+  else
+    echo " Site         : ${url}"
+    echo " Admin        : ${url}/admin/login"
+  fi
   if [ "$NEW_ENV" = "1" ]; then
     echo " Compte admin : ${NEW_ADMIN_EMAIL}"
     echo " Mot de passe : ${NEW_ADMIN_PASSWORD}   <-- NOTEZ-LE, il n'est affiche qu'une fois"
@@ -173,6 +219,12 @@ case "$ACTION" in
   logs)   need_env; compose logs --tail 100 ;;
   seed)   need_env; run_seed ;;
   stop)   need_env; compose down; echo "Arrete (donnees conservees dans les volumes Docker)." ;;
+  url)
+    need_env
+    echo "HTTP  : $(grep '^PUBLIC_URL=' .env.demo | cut -d= -f2-)"
+    t="$(tunnel_url)"
+    if [ -n "$t" ]; then echo "HTTPS : $t"; else echo "HTTPS : aucun tunnel actif (deploiement sans tunnel ?)"; fi
+    ;;
   *)      fail "Action inconnue: $ACTION" ;;
 esac
 exit 0

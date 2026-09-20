@@ -8,6 +8,8 @@
       et charge les donnees de demonstration (premier deploiement uniquement).
     - N'utilise ni les ports 80/443 ni les conteneurs des autres sites du serveur : seul le port
       -DemoPort (8081 par defaut) est utilise.
+    - HTTPS sans domaine : un tunnel Cloudflare gratuit donne une adresse https://xxxx.trycloudflare.com
+      (affichee a la fin, retrouvable avec -Action url). -NoTunnel pour le desactiver.
     - Le code deploye est celui de GitHub (branche -Branch) : poussez (git push) avant de deployer.
 
 .EXAMPLE
@@ -25,14 +27,16 @@ param(
     [int]$Port = 22,
     # Cle privee SSH (sinon : agent SSH / cle par defaut / mot de passe)
     [string]$KeyPath,
-    # deploy = installer/mettre a jour ; status ; logs ; seed (EFFACE les donnees) ; stop
-    [ValidateSet('deploy', 'status', 'logs', 'seed', 'stop')]
+    # deploy = installer/mettre a jour ; status ; logs ; url (adresse HTTPS) ; seed (EFFACE les donnees) ; stop
+    [ValidateSet('deploy', 'status', 'logs', 'seed', 'stop', 'url')]
     [string]$Action = 'deploy',
     [string]$Branch = 'main',
     [string]$RepoUrl = 'https://github.com/AbelMaminiaina/econEW.git',
     [string]$RemoteDir = '/opt/all',
     # Port public de la demo sur le serveur (ne doit pas etre utilise par un autre site)
     [int]$DemoPort = 8081,
+    # Sans HTTPS : ne pas demarrer le tunnel Cloudflare (acces http://IP:port uniquement)
+    [switch]$NoTunnel,
     # Ne pas demander de confirmation
     [switch]$Yes
 )
@@ -105,7 +109,8 @@ $envPrefix = @(
     "REPO_URL=$(ConvertTo-ShellQuoted $RepoUrl)",
     "BRANCH=$(ConvertTo-ShellQuoted $Branch)",
     "DEMO_PORT=$DemoPort",
-    "SERVER_HOST=$(ConvertTo-ShellQuoted $Server)"
+    "SERVER_HOST=$(ConvertTo-ShellQuoted $Server)",
+    "TUNNEL=$(if ($NoTunnel) { 0 } else { 1 })"
 )
 
 if ($Action -eq 'seed') {
@@ -155,7 +160,7 @@ if (-not $Yes) {
     Write-Host "  Serveur     : $target"
     Write-Host "  Dossier     : $RemoteDir"
     Write-Host "  Depot       : $RepoUrl ($Branch)"
-    Write-Host "  Acces       : http://${Server}:$DemoPort"
+    Write-Host "  Acces       : http://${Server}:$DemoPort$(if (-not $NoTunnel) { "  + HTTPS via tunnel Cloudflare" })"
     Write-Host "  Les autres sites du serveur (ports 80/443) ne sont pas modifies."
     if ((Read-Host "Lancer le deploiement ? (o/N)") -notmatch '^[oOyY]') { Stop-Deploy "Annule." }
 }
@@ -167,4 +172,5 @@ if ($script:RemoteExit -ne 0) { Stop-Deploy "Le deploiement a echoue (code $($sc
 Write-Host "`nTermine. Commandes utiles :" -ForegroundColor Green
 Write-Host "  .\scripts\deploy-demo.ps1 -Server $Server -Action status"
 Write-Host "  .\scripts\deploy-demo.ps1 -Server $Server -Action logs"
+Write-Host "  .\scripts\deploy-demo.ps1 -Server $Server -Action url       (retrouver l'adresse HTTPS)"
 Write-Host "  .\scripts\deploy-demo.ps1 -Server $Server            (mise a jour apres un git push)"
