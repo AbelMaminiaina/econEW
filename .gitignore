@@ -37,3 +37,4 @@ nginx/ssl/
 # Windows reserved names
 nul
 NUL
+.env.demo
