@@ -21,3 +21,6 @@
 *.ico binary
 *.woff binary
 *.woff2 binary
+
+# Scripts shell : toujours LF (executes sur Linux)
+*.sh text eol=lf
