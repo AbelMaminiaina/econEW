@@ -9,13 +9,32 @@ body {
 /* Le template masque le panneau d'achat tant que la carte n'est pas survolée (écrans >= lg) ;
    sur tablette et mobile (pas de survol) il reste visible sous la carte. */
 @media (max-width: 991.98px) {
+    /* La carte devient une colonne : le cadre (.product-item-inner, à 100 % de hauteur dans le
+       template) occupe la place restante et le panneau d'achat, désormais dans le flux, est compté
+       dans la hauteur de la carte. Sans cela le panneau dépassait du bas de la carte et la carte de
+       la rangée suivante recouvrait le bouton « Ajouter au panier ». */
+    .product .product-item {
+        display: flex;
+        flex-direction: column;
+    }
+    .product .product-item .product-item-inner {
+        height: auto;
+        flex: 1 1 auto;
+    }
     .product .product-item .product-item-add {
         position: static;
         opacity: 1;
         margin-bottom: 0 !important;
+        flex: 0 0 auto;
+        /* Le bouton ne colle plus au bas du cadre (le template met pt-0 : le panneau flottait) */
+        padding-top: 1rem !important;
     }
+    /* Cadre + panneau d'achat forment un seul bloc : pas de trait ni de coins arrondis entre les deux */
+    .product .product-item .product-item-inner,
     .product .product-item:hover .product-item-inner {
-        border-bottom: 1px solid #dee2e6 !important;
+        border-bottom: 0 !important;
+        border-bottom-left-radius: 0 !important;
+        border-bottom-right-radius: 0 !important;
     }
 }
 
