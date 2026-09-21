@@ -213,8 +213,25 @@ describe('POST /api/checkout', () => {
       number: '034 00 000 00',
       accountName: 'All',
       totalAmount: 35000 + SHIPPING_COSTS.standard,
+      expiresAt: expect.any(String),
     });
     expect(prismaMock.invoice.create).not.toHaveBeenCalled();
+  });
+
+  it('gives a payment deadline 48 h after the order (or none when the automatic cancellation is off)', async () => {
+    mockHappyPath();
+    const before = Date.now();
+    const res = await request(buildApp()).post('/api/checkout').set(buyerAuth).send(validPayload);
+    const deadline = new Date(res.body.payment.expiresAt).getTime();
+    expect(deadline).toBeGreaterThanOrEqual(before + 48 * 3600_000);
+    expect(deadline).toBeLessThanOrEqual(Date.now() + 48 * 3600_000);
+    expect(vi.mocked(sendOrderConfirmationEmail).mock.calls[0][0].payment?.expiresAt).toBeInstanceOf(Date);
+
+    process.env.UNPAID_ORDER_EXPIRY_HOURS = '0';
+    mockHappyPath();
+    const off = await request(buildApp()).post('/api/checkout').set(buyerAuth).send(validPayload);
+    delete process.env.UNPAID_ORDER_EXPIRY_HOURS;
+    expect(off.body.payment.expiresAt).toBeNull();
   });
 
   it('requires a payment method (no deferred or on-delivery payment)', async () => {
@@ -522,6 +539,19 @@ describe('PATCH /api/checkout/orders/:orderId/status', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('paiement');
+    expect(prismaMock.order.update).not.toHaveBeenCalled();
+  });
+
+  it('refuses to cancel an order already paid out to the seller', async () => {
+    mockExistingOrder({ status: 'delivered', payoutId: 'p1' });
+
+    const res = await request(buildApp())
+      .patch('/api/checkout/orders/o1/status')
+      .set(adminAuth)
+      .send({ status: 'cancelled', reason: 'Test' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('reversée');
     expect(prismaMock.order.update).not.toHaveBeenCalled();
   });
 

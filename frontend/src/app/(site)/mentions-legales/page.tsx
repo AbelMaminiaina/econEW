@@ -22,9 +22,9 @@ export default function MentionsLegalesPage() {
             Capital social : 10 000 000 Ar<br />
             NIF : 1234567890<br />
             STAT : 12345 67 890 1 23456<br />
-            Siège social : Lot 187, Ambohitsoa Ambavatonelina<br />
-            Téléphone : 038 01 001 01<br />
-            Email : fermeduvardier@gmail.com
+            Siège social : {CONTACT_ADDRESS_INLINE}<br />
+            Téléphone : {CONTACT.phones.map((p) => p.display).join(' / ')}<br />
+            Email : {CONTACT.email}
           </p>
           <p>
             Directeur de la publication : Varombo Fitoky
@@ -60,8 +60,8 @@ export default function MentionsLegalesPage() {
           </p>
           <p>
             Pour exercer ces droits, vous pouvez nous contacter :<br />
-            - Par email : fermeduvardier@gmail.comm<br />
-            - Par courrier : Ferme du Vardier, LE 187, Ambohitsoa Ambavatonelina, Madagascar
+            - Par email : {CONTACT.email}<br />
+            - Par courrier : {CONTACT_ADDRESS_INLINE}
           </p>
           <p>
             Pour plus d&apos;informations, consultez notre{' '}
@@ -108,3 +108,4 @@ export default function MentionsLegalesPage() {
     </div>
   );
 }
+import { CONTACT, CONTACT_ADDRESS_INLINE } from '@/lib/contact';

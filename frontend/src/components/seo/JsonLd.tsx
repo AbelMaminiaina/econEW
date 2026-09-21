@@ -13,14 +13,14 @@ export function OrganizationJsonLd() {
       'All est une plateforme de vente en gros pour professionnels à Madagascar : tarifs dégressifs, paiement par Mobile Money, livraison à Antananarivo.',
     address: {
       '@type': 'PostalAddress',
-      streetAddress: 'LE 187',
-      addressLocality: 'Ambohitsoa Ambavatonelina',
+      streetAddress: CONTACT.address.street,
+      addressLocality: CONTACT.address.locality,
       addressRegion: 'Analamanga',
       addressCountry: 'MG',
     },
     contactPoint: {
       '@type': 'ContactPoint',
-      email: 'contact@all.mg',
+      email: CONTACT.email,
       contactType: 'customer service',
       availableLanguage: ['French', 'Malagasy'],
     },
@@ -50,19 +50,13 @@ export function LocalBusinessJsonLd() {
     description:
       'Plateforme de vente en gros pour professionnels à Madagascar : catalogue multi-catégories, tarifs dégressifs par quantité, paiement par Mobile Money.',
     url: 'https://all.mg',
-    email: 'contact@all.mg',
+    email: CONTACT.email,
     address: {
       '@type': 'PostalAddress',
-      streetAddress: 'LE 187',
-      addressLocality: 'Ambohitsoa Ambavatonelina',
+      streetAddress: CONTACT.address.street,
+      addressLocality: CONTACT.address.locality,
       addressRegion: 'Analamanga',
-      postalCode: '103',
       addressCountry: 'MG',
-    },
-    geo: {
-      '@type': 'GeoCoordinates',
-      latitude: -18.8792,
-      longitude: 47.5079,
     },
     openingHoursSpecification: [
       {
@@ -233,3 +227,4 @@ export function WebsiteJsonLd() {
     />
   );
 }
+import { CONTACT } from '@/lib/contact';

@@ -62,13 +62,38 @@ services:
       PAYMENT_ORANGE_MONEY_NUMBER: ${PAYMENT_ORANGE_MONEY_NUMBER:-}
       PAYMENT_AIRTEL_MONEY_NUMBER: ${PAYMENT_AIRTEL_MONEY_NUMBER:-}
       PAYMENT_ACCOUNT_NAME: ${PAYMENT_ACCOUNT_NAME:-All}
+      # Paiement automatique MVola (Merchant Pay) : laisser vide = paiement manuel par référence uniquement.
+      # Voir MVOLA-INTEGRATION.md (identifiants à demander à MVola, validation en bac à sable avant la production).
+      MVOLA_CONSUMER_KEY: ${MVOLA_CONSUMER_KEY:-}
+      MVOLA_CONSUMER_SECRET: ${MVOLA_CONSUMER_SECRET:-}
+      MVOLA_MERCHANT_NUMBER: ${MVOLA_MERCHANT_NUMBER:-}
+      MVOLA_PARTNER_NAME: ${MVOLA_PARTNER_NAME:-}
+      MVOLA_ENV: ${MVOLA_ENV:-sandbox}
+      MVOLA_LANGUAGE: ${MVOLA_LANGUAGE:-FR}
+      MVOLA_CALLBACK_URL: ${MVOLA_CALLBACK_URL:-}
+      # Paiement automatique Orange Money (page de paiement d'Orange) et Airtel Money (demande sur le téléphone) :
+      # laisser vide = paiement manuel. Voir OPERATEURS-INTEGRATION.md (bac à sable à valider avant la production).
+      PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-}
+      # Paiement de DÉMONSTRATION : opérateurs simulés dans le backend (aucun argent réel). Jamais sur un vrai site.
+      DEMO_PAYMENTS: ${DEMO_PAYMENTS:-false}
+      ORANGE_MONEY_CLIENT_ID: ${ORANGE_MONEY_CLIENT_ID:-}
+      ORANGE_MONEY_CLIENT_SECRET: ${ORANGE_MONEY_CLIENT_SECRET:-}
+      ORANGE_MONEY_MERCHANT_KEY: ${ORANGE_MONEY_MERCHANT_KEY:-}
+      ORANGE_MONEY_ENV: ${ORANGE_MONEY_ENV:-sandbox}
+      AIRTEL_MONEY_CLIENT_ID: ${AIRTEL_MONEY_CLIENT_ID:-}
+      AIRTEL_MONEY_CLIENT_SECRET: ${AIRTEL_MONEY_CLIENT_SECRET:-}
+      AIRTEL_MONEY_ENV: ${AIRTEL_MONEY_ENV:-sandbox}
+      # Commission de la plateforme sur les ventes des vendeurs (% du sous-total ; modifiable par vendeur dans /admin/reversements)
+      PLATFORM_COMMISSION_RATE: ${PLATFORM_COMMISSION_RATE:-10}
+      # Délai (en heures) avant l'annulation automatique d'une commande non payée (0 = jamais)
+      UNPAID_ORDER_EXPIRY_HOURS: ${UNPAID_ORDER_EXPIRY_HOURS:-48}
       # E-mails (optionnel : sans SMTP, les envois sont simplement ignorés)
       SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_SECURE: ${SMTP_SECURE:-false}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-savatry.milamina@gmail.com}
     depends_on:
       postgres:
         condition: service_healthy

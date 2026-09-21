@@ -9,10 +9,14 @@ vi.mock('../services/emailService.js', () => ({
   sendPaymentConfirmedEmail: vi.fn().mockResolvedValue(true),
   sendPaymentRejectedEmail: vi.fn().mockResolvedValue(true),
 }));
+vi.mock('../services/orderExpiry.js', () => ({
+  expireUnpaidOrders: vi.fn().mockResolvedValue({ cancelled: ['ORD-1'] }),
+}));
 
 import prisma from '../lib/prisma.js';
 import { signToken } from '../lib/auth.js';
 import { sendPaymentConfirmedEmail, sendPaymentRejectedEmail } from '../services/emailService.js';
+import { expireUnpaidOrders } from '../services/orderExpiry.js';
 import paymentsRouter from './payments.js';
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
@@ -51,6 +55,8 @@ const baseOrder = {
   guestEmail: 'jean@example.mg',
   guestPhone: '034 11 111 11',
   seller: { name: 'Vendeur 1' },
+  createdAt: new Date('2026-09-20T10:00:00Z'),
+  updatedAt: new Date('2026-09-20T10:00:00Z'),
   paymentMethod: 'mvola',
   paymentStatus: 'awaiting',
   paymentReference: null,
@@ -76,8 +82,8 @@ describe('GET /api/payments/methods', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.methods).toEqual([
-      { id: 'mvola', label: 'MVola', number: '034 00 000 00', accountName: 'All' },
-      { id: 'orange_money', label: 'Orange Money', number: '032 00 000 00', accountName: 'All' },
+      { id: 'mvola', label: 'MVola', number: '034 00 000 00', accountName: 'All', automatic: false },
+      { id: 'orange_money', label: 'Orange Money', number: '032 00 000 00', accountName: 'All', automatic: false },
     ]);
   });
 });
@@ -114,6 +120,255 @@ describe('GET /api/payments/status', () => {
 
     expect(owner.status).toBe(200);
     expect(other.status).toBe(404);
+  });
+});
+
+describe('date limite de paiement', () => {
+  it('expose la date limite (création + 48 h) tant que la commande est à payer', async () => {
+    delete process.env.UNPAID_ORDER_EXPIRY_HOURS;
+    mockGroup();
+
+    const res = await request(buildApp()).get('/api/payments/status?orderNumber=ORD-1&email=jean@example.mg');
+
+    expect(res.status).toBe(200);
+    expect(new Date(res.body.expiresAt)).toEqual(new Date('2026-09-22T10:00:00Z'));
+  });
+
+  it('compte le nouveau délai depuis le refus quand le paiement a été refusé', async () => {
+    delete process.env.UNPAID_ORDER_EXPIRY_HOURS;
+    mockGroup({ paymentStatus: 'rejected', updatedAt: new Date('2026-09-21T15:00:00Z') });
+
+    const res = await request(buildApp()).get('/api/payments/status?orderNumber=ORD-1&email=jean@example.mg');
+
+    expect(new Date(res.body.expiresAt)).toEqual(new Date('2026-09-23T15:00:00Z'));
+  });
+
+  it('n’expose plus de date limite quand la référence est à vérifier ou le paiement confirmé', async () => {
+    mockGroup({ paymentStatus: 'submitted' });
+    const submitted = await request(buildApp()).get('/api/payments/status?orderNumber=ORD-1&email=jean@example.mg');
+    mockGroup({ paymentStatus: 'paid' });
+    const paid = await request(buildApp()).get('/api/payments/status?orderNumber=ORD-1&email=jean@example.mg');
+
+    expect(submitted.body.expiresAt).toBeNull();
+    expect(paid.body.expiresAt).toBeNull();
+  });
+
+  it('donne le motif quand toutes les commandes ont été annulées faute de paiement', async () => {
+    mockGroup({ status: 'cancelled', cancelReason: 'Non payée dans le délai imparti' });
+
+    const res = await request(buildApp()).get('/api/payments/status?orderNumber=ORD-1&email=jean@example.mg');
+
+    expect(res.body.cancelReason).toBe('Non payée dans le délai imparti');
+    expect(res.body.expiresAt).toBeNull();
+  });
+
+  it('n’expose pas de motif d’annulation pour une commande encore active', async () => {
+    mockGroup();
+
+    const res = await request(buildApp()).get('/api/payments/status?orderNumber=ORD-1&email=jean@example.mg');
+
+    expect(res.body.cancelReason).toBeNull();
+  });
+
+  it('n’expose pas de date limite quand l’annulation automatique est désactivée', async () => {
+    process.env.UNPAID_ORDER_EXPIRY_HOURS = '0';
+    mockGroup();
+
+    const res = await request(buildApp()).get('/api/payments/status?orderNumber=ORD-1&email=jean@example.mg');
+
+    expect(res.body.expiresAt).toBeNull();
+    delete process.env.UNPAID_ORDER_EXPIRY_HOURS;
+  });
+});
+
+describe('paiement automatique MVola', () => {
+  const configure = () => {
+    process.env.MVOLA_CONSUMER_KEY = 'k';
+    process.env.MVOLA_CONSUMER_SECRET = 's';
+    process.env.MVOLA_MERCHANT_NUMBER = '034 00 000 00';
+  };
+  const unconfigure = () => {
+    delete process.env.MVOLA_CONSUMER_KEY;
+    delete process.env.MVOLA_CONSUMER_SECRET;
+    delete process.env.MVOLA_MERCHANT_NUMBER;
+  };
+
+  it('propose le paiement automatique uniquement quand MVola est configuré', async () => {
+    mockGroup();
+    const off = await request(buildApp()).get('/api/payments/status?orderNumber=ORD-1&email=jean@example.mg');
+    configure();
+    const on = await request(buildApp()).get('/api/payments/status?orderNumber=ORD-1&email=jean@example.mg');
+    const methods = await request(buildApp()).get('/api/payments/methods');
+    unconfigure();
+
+    expect(off.body.automatic).toBe(false);
+    expect(on.body.automatic).toBe(true);
+    expect(methods.body.methods.find((m: any) => m.id === 'mvola').automatic).toBe(true);
+    expect(methods.body.methods.find((m: any) => m.id === 'orange_money').automatic).toBe(false);
+  });
+
+  it('ne le propose pas pour un autre opérateur ni pour un paiement déjà confirmé', async () => {
+    configure();
+    mockGroup({ paymentMethod: 'orange_money' });
+    const orange = await request(buildApp()).get('/api/payments/status?orderNumber=ORD-1&email=jean@example.mg');
+    mockGroup({ paymentStatus: 'paid' });
+    const paid = await request(buildApp()).get('/api/payments/status?orderNumber=ORD-1&email=jean@example.mg');
+    unconfigure();
+
+    expect(orange.body.automatic).toBe(false);
+    expect(paid.body.automatic).toBe(false);
+  });
+
+  it('expose la dernière tentative (sans les identifiants internes de MVola)', async () => {
+    mockGroup({ paymentStatus: 'awaiting' });
+    prismaMock.paymentAttempt.findFirst.mockResolvedValue({
+      id: 'att-1', status: 'failed', failureReason: 'Paiement refusé, annulé ou expiré sur MVola', payerPhone: '0343500003',
+      createdAt: new Date('2026-09-20T10:00:00Z'), serverCorrelationId: 'secret', transactionId: 'secret-tx',
+    } as any);
+
+    const res = await request(buildApp()).get('/api/payments/status?orderNumber=ORD-1&email=jean@example.mg');
+
+    expect(res.body.attempt).toMatchObject({ id: 'att-1', status: 'failed', failureReason: 'Paiement refusé, annulé ou expiré sur MVola' });
+    expect(JSON.stringify(res.body)).not.toContain('secret');
+  });
+
+  it('propose Orange Money (redirection) et Airtel Money (téléphone) quand leur API est configurée, avec leur fonctionnement', async () => {
+    Object.assign(process.env, {
+      ORANGE_MONEY_CLIENT_ID: 'i', ORANGE_MONEY_CLIENT_SECRET: 's', ORANGE_MONEY_MERCHANT_KEY: 'm', PUBLIC_SITE_URL: 'https://all.example.mg',
+      AIRTEL_MONEY_CLIENT_ID: 'i', AIRTEL_MONEY_CLIENT_SECRET: 's',
+    });
+    try {
+      mockGroup({ paymentMethod: 'orange_money' });
+      const orange = await request(buildApp()).get('/api/payments/status?orderNumber=ORD-1&email=jean@example.mg');
+      mockGroup({ paymentMethod: 'airtel_money' });
+      const airtel = await request(buildApp()).get('/api/payments/status?orderNumber=ORD-1&email=jean@example.mg');
+      mockGroup({ paymentMethod: 'mvola' });
+      const mvola = await request(buildApp()).get('/api/payments/status?orderNumber=ORD-1&email=jean@example.mg');
+
+      expect(orange.body).toMatchObject({ automatic: true, instant: { provider: 'orange_money', label: 'Orange Money', flow: 'redirect', phonePrefixes: '032 ou 037' } });
+      expect(airtel.body).toMatchObject({ automatic: true, instant: { provider: 'airtel_money', flow: 'push', phonePrefixes: '033' } });
+      expect(mvola.body).toMatchObject({ automatic: false, instant: null }); // MVola non configuré ici
+    } finally {
+      for (const key of ['ORANGE_MONEY_CLIENT_ID', 'ORANGE_MONEY_CLIENT_SECRET', 'ORANGE_MONEY_MERCHANT_KEY', 'PUBLIC_SITE_URL', 'AIRTEL_MONEY_CLIENT_ID', 'AIRTEL_MONEY_CLIENT_SECRET']) {
+        delete process.env[key];
+      }
+    }
+  });
+
+  it('expose la page de paiement Orange d’une tentative en cours, sans le pay_token ni le jeton de notification', async () => {
+    mockGroup({ paymentMethod: 'orange_money', paymentStatus: 'submitted' });
+    prismaMock.paymentAttempt.findFirst.mockResolvedValue({
+      id: 'att-1', provider: 'orange_money', status: 'pending', failureReason: null, payerPhone: '', createdAt: new Date(),
+      paymentUrl: 'https://webpayment.orange.example/pay/abc', serverCorrelationId: 'secret-pay-token', notifToken: 'secret-notif',
+    } as any);
+
+    const res = await request(buildApp()).get('/api/payments/status?orderNumber=ORD-1&email=jean@example.mg');
+
+    expect(res.body.attempt).toMatchObject({ provider: 'orange_money', status: 'pending', paymentUrl: 'https://webpayment.orange.example/pay/abc' });
+    expect(JSON.stringify(res.body)).not.toContain('secret');
+  });
+
+  it('n’expose plus la page de paiement une fois la tentative échouée', async () => {
+    mockGroup({ paymentMethod: 'orange_money' });
+    prismaMock.paymentAttempt.findFirst.mockResolvedValue({
+      id: 'att-1', provider: 'orange_money', status: 'failed', failureReason: 'Paiement refusé, annulé ou expiré sur Orange Money', payerPhone: '',
+      createdAt: new Date(), paymentUrl: 'https://webpayment.orange.example/pay/abc',
+    } as any);
+
+    const res = await request(buildApp()).get('/api/payments/status?orderNumber=ORD-1&email=jean@example.mg');
+
+    expect(res.body.attempt.paymentUrl).toBeNull();
+  });
+
+  it('refuse (409) une référence manuelle pendant un paiement Orange en cours, avec un message adapté à la redirection', async () => {
+    mockGroup({ paymentMethod: 'orange_money' });
+    prismaMock.paymentAttempt.findFirst.mockResolvedValue({ id: 'att-1', provider: 'orange_money' } as any);
+
+    const res = await request(buildApp())
+      .post('/api/payments/submit')
+      .send({ orderNumber: 'ORD-1', email: 'jean@example.mg', reference: 'MP260920.1234.A56789', payerPhone: '032 11 111 11' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toContain('Orange Money est en cours');
+    expect(res.body.error).toContain('page de l’opérateur');
+  });
+
+  it('signale dans la liste admin un paiement lancé par l’API d’Orange ou d’Airtel', async () => {
+    prismaMock.order.findMany.mockResolvedValue([
+      { ...baseOrder, paymentStatus: 'submitted', paymentReference: 'ORANGE_MONEY:att-1', company: null, user: null, createdAt: new Date() },
+      { ...baseOrder, id: 'o2', orderNumber: 'ORD-2', checkoutGroup: 'g2', paymentStatus: 'submitted', paymentReference: 'AIRTEL_MONEY:att-2', company: null, user: null, createdAt: new Date() },
+    ] as any);
+    prismaMock.paymentAttempt.findMany.mockResolvedValue([]);
+
+    const res = await request(buildApp()).get('/api/payments/admin').set(adminAuth);
+
+    expect(res.body.payments.map((p: any) => p.automatic)).toEqual([true, true]);
+  });
+
+  it('n’a aucune tentative pour un paiement purement manuel', async () => {
+    mockGroup();
+    const res = await request(buildApp()).get('/api/payments/status?orderNumber=ORD-1&email=jean@example.mg');
+    expect(res.body.attempt).toBeNull();
+  });
+
+  it('refuse (409) une référence manuelle pendant qu’une demande MVola est en cours', async () => {
+    mockGroup();
+    prismaMock.paymentAttempt.findFirst.mockResolvedValue({ id: 'att-1', provider: 'mvola' } as any);
+
+    const res = await request(buildApp())
+      .post('/api/payments/submit')
+      .send({ orderNumber: 'ORD-1', email: 'jean@example.mg', reference: 'MP260920.1234.A56789', payerPhone: '034 11 111 11' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toContain('MVola est en cours');
+    expect(prismaMock.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('signale dans la liste admin les paiements lancés par l’API et leur tentative', async () => {
+    prismaMock.order.findMany.mockResolvedValue([
+      { ...baseOrder, paymentStatus: 'submitted', paymentReference: 'MVOLA:att-1', company: null, user: null, createdAt: new Date() },
+    ] as any);
+    prismaMock.paymentAttempt.findMany.mockResolvedValue([{ orderId: 'o1', status: 'review', failureReason: 'Montant reçu 149000 Ar au lieu de 150000 Ar' }] as any);
+
+    const res = await request(buildApp()).get('/api/payments/admin').set(adminAuth);
+
+    expect(res.body.payments[0]).toMatchObject({
+      automatic: true,
+      attempt: { status: 'review', failureReason: 'Montant reçu 149000 Ar au lieu de 150000 Ar' },
+    });
+  });
+
+  it('marque comme manuel un paiement saisi avec une référence', async () => {
+    prismaMock.order.findMany.mockResolvedValue([
+      { ...baseOrder, paymentStatus: 'submitted', paymentReference: 'MP260920.1234.A56789', company: null, user: null, createdAt: new Date() },
+    ] as any);
+    prismaMock.paymentAttempt.findMany.mockResolvedValue([]);
+
+    const res = await request(buildApp()).get('/api/payments/admin').set(adminAuth);
+
+    expect(res.body.payments[0].automatic).toBe(false);
+    expect(res.body.payments[0].attempt).toBeNull();
+  });
+});
+
+describe('POST /api/payments/admin/expire-unpaid', () => {
+  it('lance l’annulation des commandes non payées pour un administrateur', async () => {
+    vi.mocked(expireUnpaidOrders).mockClear();
+
+    const res = await request(buildApp()).post('/api/payments/admin/expire-unpaid').set(adminAuth);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ success: true, cancelled: ['ORD-1'] });
+    expect(expireUnpaidOrders).toHaveBeenCalledTimes(1);
+  });
+
+  it('est refusé à un non-administrateur', async () => {
+    vi.mocked(expireUnpaidOrders).mockClear();
+
+    const res = await request(buildApp()).post('/api/payments/admin/expire-unpaid').set(buyerAuth);
+
+    expect(res.status).toBe(403);
+    expect(expireUnpaidOrders).not.toHaveBeenCalled();
   });
 });
 
@@ -240,6 +495,58 @@ describe('admin payments', () => {
     expect(sendPaymentConfirmedEmail).toHaveBeenCalledWith(
       expect.objectContaining({ orderNumbers: ['ORD-1', 'ORD-2'], contactEmail: 'jean@example.mg', totalAmount: 150000 })
     );
+  });
+
+  describe('commission de la plateforme', () => {
+    function mockSellerGroup(sellerRate: number | null) {
+      const seller = { ...baseOrder, sellerId: 's1', paymentStatus: 'submitted', subtotal: 100_000, total: 103_000 };
+      const platform = { ...secondOrder, sellerId: null, paymentStatus: 'submitted', subtotal: 50_000, total: 50_000 };
+      prismaMock.order.findUnique.mockResolvedValue(seller as any);
+      prismaMock.order.findMany.mockResolvedValue([seller, platform] as any);
+      prismaMock.company.findMany.mockResolvedValue([{ id: 's1', commissionRate: sellerRate }] as any);
+      prismaMock.order.update.mockResolvedValue({} as any);
+    }
+
+    it('fige la commission avec le taux propre du vendeur (sur le sous-total, livraison exclue)', async () => {
+      mockSellerGroup(5);
+
+      const res = await request(buildApp()).patch('/api/payments/admin/o1/confirm').set(adminAuth);
+
+      expect(res.status).toBe(200);
+      const sellerUpdate = prismaMock.order.update.mock.calls[0][0] as any;
+      expect(sellerUpdate.data).toMatchObject({ commissionRate: 5, commissionAmount: 5_000, sellerAmount: 98_000 });
+      expect((prismaMock.company.findMany.mock.calls[0][0] as any).where).toEqual({ id: { in: ['s1'] } });
+    });
+
+    it('utilise le taux par défaut (10 %) quand le vendeur n’a pas de taux propre', async () => {
+      delete process.env.PLATFORM_COMMISSION_RATE;
+      mockSellerGroup(null);
+
+      await request(buildApp()).patch('/api/payments/admin/o1/confirm').set(adminAuth);
+
+      const sellerUpdate = prismaMock.order.update.mock.calls[0][0] as any;
+      expect(sellerUpdate.data).toMatchObject({ commissionRate: 10, commissionAmount: 10_000, sellerAmount: 93_000 });
+    });
+
+    it('ne prélève aucune commission sur les produits de la plateforme (sans vendeur)', async () => {
+      mockSellerGroup(5);
+
+      await request(buildApp()).patch('/api/payments/admin/o1/confirm').set(adminAuth);
+
+      const platformUpdate = prismaMock.order.update.mock.calls[1][0] as any;
+      expect(platformUpdate.data.paymentStatus).toBe('paid');
+      expect(platformUpdate.data).not.toHaveProperty('commissionAmount');
+      expect(platformUpdate.data).not.toHaveProperty('sellerAmount');
+    });
+
+    it('ne cherche aucun vendeur quand la commande est 100 % plateforme', async () => {
+      mockGroup({ paymentStatus: 'submitted' });
+      prismaMock.order.update.mockResolvedValue({} as any);
+
+      await request(buildApp()).patch('/api/payments/admin/o1/confirm').set(adminAuth);
+
+      expect(prismaMock.company.findMany).not.toHaveBeenCalled();
+    });
   });
 
   it('refuses to confirm a payment that is already confirmed', async () => {

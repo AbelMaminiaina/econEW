@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { CONTACT, CONTACT_ADDRESS_LINES } from '@/lib/contact';
 
 const COLUMNS = [
   {
@@ -33,8 +34,8 @@ const COLUMNS = [
 ];
 
 const INFO_CARDS = [
-  { icon: 'fa-map-marker-alt', title: 'Adresse', lines: ['LE 187', 'Ambohitsoa Ambavatonelina, Madagascar'] },
-  { icon: 'fa-envelope', title: 'Écrivez-nous', lines: ['contact@all.mg'] },
+  { icon: 'fa-map-marker-alt', title: 'Adresse', lines: [...CONTACT_ADDRESS_LINES] },
+  { icon: 'fa-envelope', title: 'Écrivez-nous', lines: [CONTACT.email] },
   { icon: 'fa-clock', title: 'Horaires', lines: ['Lun - Ven : 9h - 18h', 'Sam : 9h - 12h · Dim : fermé'] },
   { icon: 'fa-mobile-alt', title: 'Paiement sécurisé', lines: ['MVola, Orange Money,', 'Airtel Money'] },
 ];

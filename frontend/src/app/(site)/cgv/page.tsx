@@ -184,9 +184,9 @@ export default function CGVPage() {
           <p>
             Pour toute question relative à ces CGV :<br />
             <strong>Ferme du Vardier</strong><br />
-            Ambohitsoa Ambavatonelina<br />
-            Email : fermeduvardier@gmail.com<br />
-            Téléphone : 038 01 001 01
+            {CONTACT_ADDRESS_INLINE}<br />
+            Email : {CONTACT.email}<br />
+            Téléphone : {CONTACT.phones.map((p) => p.display).join(' / ')}
           </p>
 
           <p className="text-sm text-warm-500 mt-8">
@@ -197,3 +197,4 @@ export default function CGVPage() {
     </div>
   );
 }
+import { CONTACT, CONTACT_ADDRESS_INLINE } from '@/lib/contact';

@@ -8,6 +8,7 @@ import { useCompanyAccess } from '@/hooks/useCompanyAccess';
 const tabs = [
   { name: 'Mes produits', href: '/vendeur' },
   { name: 'Commandes reçues', href: '/vendeur/commandes' },
+  { name: 'Mes gains', href: '/vendeur/reversements' },
   { name: 'Publier un produit', href: '/vendeur/produits/nouveau' },
 ];
 

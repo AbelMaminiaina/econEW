@@ -131,6 +131,20 @@ export default function SellerOrdersPage() {
                       <span>Total</span>
                       <span>{formatPrice(order.total)}</span>
                     </li>
+                    {order.sellerAmount != null && (
+                      <li className="flex justify-between rounded-lg bg-green-50 px-2 py-1 text-green-800">
+                        <span>
+                          Vous recevez
+                          {order.commissionAmount != null && (
+                            <span className="font-normal"> (commission {formatPrice(order.commissionAmount)})</span>
+                          )}
+                        </span>
+                        <span className="font-semibold">
+                          {formatPrice(order.sellerAmount)}
+                          {order.reversed && ' · versé'}
+                        </span>
+                      </li>
+                    )}
                   </ul>
                 </div>
 

@@ -32,6 +32,8 @@ interface CheckoutResponse {
     number: string;
     accountName: string;
     totalAmount: number;
+    /** Date limite de paiement ; null si l'annulation automatique est désactivée */
+    expiresAt: string | null;
   };
   // Une commande par vendeur : `orders` liste toutes les commandes créées
   orders?: {

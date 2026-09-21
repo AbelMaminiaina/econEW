@@ -1,4 +1,5 @@
 import React from 'react';
+import { CONTACT, CONTACT_ADDRESS_INLINE, CONTACT_MAILTO, CONTACT_PHONE_LINKS } from '@/lib/contact';
 import Link from 'next/link';
 import Image from 'next/image';
 import { formatPrice, formatQuantity, getProductImage } from '@/lib/utils';
@@ -17,15 +18,20 @@ export function CtaSection({ previewProduct }: { previewProduct?: Product }) {
               dégressifs. Particulier ? Vous pouvez aussi commander en gros volume, sans compte, et payer par Mobile Money.
             </p>
             <p className="mb-1">
-              <i className="fas fa-map-marker-alt text-primary me-3"></i>LE 187, Ambohitsoa Ambavatonelina, Madagascar
+              <i className="fas fa-map-marker-alt text-primary me-3"></i>{CONTACT_ADDRESS_INLINE}
             </p>
             <p className="mb-1">
               <i className="fas fa-envelope text-primary me-3"></i>
-              <a href="mailto:contact@all.mg" className="text-decoration-none" style={{ color: 'inherit' }}>contact@all.mg</a>
+              <a href={CONTACT_MAILTO} className="text-decoration-none" style={{ color: 'inherit' }}>{CONTACT.email}</a>
             </p>
             <p className="mb-4">
               <i className="fas fa-phone-alt text-primary me-3"></i>
-              <a href="tel:+261380100101" className="text-decoration-none" style={{ color: 'inherit' }}>038 01 001 01</a>
+              {CONTACT_PHONE_LINKS.map((phone, index) => (
+                <React.Fragment key={phone.href}>
+                  {index > 0 && ' · '}
+                  <a href={phone.href} className="text-decoration-none" style={{ color: 'inherit' }}>{phone.display}</a>
+                </React.Fragment>
+              ))}
             </p>
             <div className="d-flex flex-wrap gap-3">
               <Link href="/inscription" className="btn btn-primary rounded-pill py-3 px-5">

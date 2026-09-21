@@ -10,6 +10,11 @@ import companiesRouter from './routes/companies.js';
 import sellerRouter from './routes/seller.js';
 import sellersRouter from './routes/sellers.js';
 import paymentsRouter from './routes/payments.js';
+import payoutsRouter from './routes/payouts.js';
+import autoPaymentsRouter from './routes/autoPayments.js';
+import { startAutoPaymentReconcileJob } from './services/mobileMoneyPayments.js';
+import { setupDemoPayments } from './services/demoPayments.js';
+import { startOrderExpiryJob } from './services/orderExpiry.js';
 import adminProductsRouter from './routes/adminProducts.js';
 import { connectRedis, redis, isRedisAvailable } from './lib/redis.js';
 import { authenticate, requirePlatformAdmin } from './middleware/auth.js';
@@ -38,7 +43,9 @@ app.use('/api/auth', authRouter);
 app.use('/api/companies', companiesRouter);
 app.use('/api/seller', sellerRouter);
 app.use('/api/sellers', sellersRouter);
+app.use('/api/payments/auto', autoPaymentsRouter);
 app.use('/api/payments', paymentsRouter);
+app.use('/api/payouts', payoutsRouter);
 app.use('/api/admin/products', adminProductsRouter);
 
 // Health check with Redis status
@@ -98,6 +105,14 @@ async function start() {
   app.listen(PORT, () => {
     console.log(`Backend server running on http://localhost:${PORT}`);
   });
+
+  // Démo uniquement (DEMO_PAYMENTS=true) : opérateurs Mobile Money simulés, avant la lecture de leur configuration
+  setupDemoPayments(app, Number(PORT));
+
+  // Annule les commandes non payées passé le délai (libère le stock réservé)
+  startOrderExpiryJob();
+  // Vérifie auprès des opérateurs (MVola, Orange Money, Airtel Money) les paiements automatiques en attente
+  startAutoPaymentReconcileJob();
 }
 
 start().catch(console.error);

@@ -15,6 +15,7 @@ import {
   Building2,
   PackageSearch,
   Smartphone,
+  Wallet,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { signOut } from 'next-auth/react';
@@ -23,6 +24,7 @@ const adminNavigation = [
   { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
   { name: 'Commandes', href: '/admin/commandes', icon: ShoppingCart },
   { name: 'Paiements', href: '/admin/paiements', icon: Smartphone },
+  { name: 'Reversements', href: '/admin/reversements', icon: Wallet },
   { name: 'Entreprises', href: '/admin/entreprises', icon: Building2 },
   { name: 'Produits vendeurs', href: '/admin/produits', icon: PackageSearch },
   { name: 'Stocks', href: '/admin/stocks', icon: Package },

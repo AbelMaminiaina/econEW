@@ -32,6 +32,11 @@ export interface SellerOrder {
   // Paiement Mobile Money : la commande ne peut être traitée qu'une fois le paiement confirmé
   paymentMethod: 'mvola' | 'orange_money' | 'airtel_money' | null;
   paymentStatus: 'awaiting' | 'submitted' | 'paid' | 'rejected';
+  // Part du vendeur, calculée à la confirmation du paiement (reversed = déjà versée par la plateforme)
+  commissionRate?: number | null;
+  commissionAmount?: number | null;
+  sellerAmount?: number | null;
+  reversed?: boolean;
   notes: string | null;
   cancelReason: string | null;
   createdAt: string;

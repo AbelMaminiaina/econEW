@@ -88,6 +88,20 @@ describe('sendOrderConfirmationEmail', () => {
     expect(customerCall.html).toMatch(/55\s000\sAr/);
   });
 
+  it('shows the payment deadline and the automatic cancellation warning', async () => {
+    await sendOrderConfirmationEmail({ ...baseOrder, payment: { ...baseOrder.payment, expiresAt: new Date('2026-09-22T10:00:00Z') } });
+
+    const html = sendMailMock.mock.calls[0][0].html as string;
+    expect(html).toContain('À régler avant le');
+    expect(html).toContain('annulée automatiquement');
+  });
+
+  it('omits the deadline line when the automatic cancellation is disabled', async () => {
+    await sendOrderConfirmationEmail(baseOrder);
+
+    expect(sendMailMock.mock.calls[0][0].html).not.toContain('À régler avant le');
+  });
+
   it('returns false and does not throw when sendMail rejects', async () => {
     sendMailMock.mockRejectedValueOnce(new Error('smtp error'));
 

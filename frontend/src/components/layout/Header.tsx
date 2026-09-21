@@ -1,5 +1,6 @@
 'use client';
 
+import { CONTACT } from '@/lib/contact';
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -27,7 +28,7 @@ import { useCategories } from '@/hooks/useCategories';
 import { useCompanyAccess } from '@/hooks/useCompanyAccess';
 import CartDrawer from '../cart/CartDrawer';
 
-const CONTACT_EMAIL = 'contact@all.mg';
+const CONTACT_EMAIL: string = CONTACT.email;
 
 const topbarLink = 'text-warm-500 transition-colors hover:text-electro-primary';
 const dropdownItem =

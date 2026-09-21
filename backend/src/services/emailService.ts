@@ -33,6 +33,8 @@ interface OrderData {
     accountName: string;
     /** Montant total à envoyer (somme des commandes d'un même panier) */
     totalToPay: number;
+    /** Date limite : passé ce délai, la commande non payée est annulée automatiquement */
+    expiresAt?: Date | null;
   };
   createdAt: Date;
 }
@@ -210,6 +212,7 @@ function generateCustomerEmailHTML(order: OrderData): string {
         <div style="background-color: white; border-radius: 8px; padding: 15px; text-align: center;">
           <p style="margin: 0 0 5px 0; color: #666; font-size: 12px;">MONTANT À ENVOYER</p>
           <p style="margin: 0; font-size: 28px; font-weight: bold; color: #9a3412;">${formatPrice(order.payment.totalToPay)}</p>
+          ${order.payment.expiresAt ? `<p style="margin: 8px 0 0 0; color: #b45309; font-size: 13px;">À régler avant le <strong>${formatDate(order.payment.expiresAt)}</strong> : passé ce délai, la commande est annulée automatiquement.</p>` : ''}
         </div>
 
         <div style="background-color: white; border-radius: 8px; padding: 15px; margin-top: 10px; text-align: center;">
@@ -966,6 +969,44 @@ export async function sendPaymentRejectedEmail(data: PaymentRejectedEmailData): 
     return true;
   } catch (error) {
     console.error('Error sending payment rejection email:', error);
+    return false;
+  }
+}
+
+interface PayoutPaidEmailData {
+  companyName: string;
+  contactEmail: string;
+  amount: number;
+  commissionTotal: number;
+  methodLabel: string;
+  reference: string;
+  orderNumbers: string[];
+}
+
+// Envoyer email au VENDEUR quand la plateforme lui a REVERSÉ le produit de ses ventes
+export async function sendPayoutPaidEmail(data: PayoutPaidEmailData): Promise<boolean> {
+  try {
+    if (!smtpConfigured()) {
+      console.log('SMTP not configured, skipping payout email');
+      return false;
+    }
+    const transporter = createTransporter();
+    const html = paymentEmailShell(
+      'Reversement effectué',
+      'linear-gradient(135deg, #16a34a 0%, #22c55e 100%)',
+      '💸',
+      `<p style="margin: 15px 0; color: #666;">Bonjour ${data.companyName}, nous vous avons versé <strong>${formatPrice(data.amount)}</strong> par ${data.methodLabel} pour ${data.orderNumbers.length} commande${data.orderNumbers.length > 1 ? 's' : ''} livrée${data.orderNumbers.length > 1 ? 's' : ''}.</p>
+      <p style="margin: 15px 0; color: #333;">Commande${data.orderNumbers.length > 1 ? 's' : ''} : <strong>${data.orderNumbers.join(', ')}</strong><br>Commission de la plateforme retenue : ${formatPrice(data.commissionTotal)}<br>Référence de la transaction : <strong>${data.reference}</strong></p>`
+    );
+    await transporter.sendMail({
+      from: `"${BRAND_NAME}" <${process.env.SMTP_USER}>`,
+      to: data.contactEmail,
+      subject: `💸 Reversement de ${formatPrice(data.amount)} - ${data.orderNumbers.length} commande(s)`,
+      html,
+    });
+    return true;
+  } catch (error) {
+    console.error('Error sending payout email:', error);
     return false;
   }
 }

@@ -22,6 +22,7 @@ import {
 } from '../middleware/auth.js';
 import { rateLimit } from '../lib/rateLimit.js';
 import { PAYMENT_METHOD_IDS, getPaymentMethod } from '../lib/payments.js';
+import { orderExpiresAt } from '../lib/orderExpiry.js';
 
 const router = Router();
 
@@ -325,12 +326,16 @@ router.post('/', optionalAuthenticate, limitGuestOrders, canOrderOrGuest, async 
     }
 
     const totalAmount = createdOrders.reduce((sum, o) => sum + o.total, 0);
+    // Date limite de paiement (null si l'annulation automatique est désactivée)
+    const placedAt = new Date();
+    const expiresAt = orderExpiresAt({ status: 'pending', paymentStatus: 'awaiting', createdAt: placedAt, updatedAt: placedAt });
     const payment = {
       method: paymentMethod.id,
       label: paymentMethod.label,
       number: paymentMethod.number,
       accountName: paymentMethod.accountName,
       totalAmount,
+      expiresAt,
     };
 
     // Envoi asynchrone (ne bloque pas la réponse) : e-mail avec les instructions de paiement
@@ -342,6 +347,7 @@ router.post('/', optionalAuthenticate, limitGuestOrders, canOrderOrGuest, async 
           number: paymentMethod.number,
           accountName: paymentMethod.accountName,
           totalToPay: totalAmount,
+          expiresAt,
         },
       }).catch((err) => console.error('Failed to send email:', err));
     }
@@ -535,6 +541,11 @@ router.get('/orders/seller', authenticate, requireApprovedCompany, async (req: R
         deliveryMethod: order.deliveryMethod,
         paymentMethod: order.paymentMethod,
         paymentStatus: order.paymentStatus,
+        // Part du vendeur (calculée à la confirmation du paiement) ; reversed = déjà versée par la plateforme
+        commissionRate: order.commissionRate,
+        commissionAmount: order.commissionAmount,
+        sellerAmount: order.sellerAmount,
+        reversed: !!order.payoutId,
         notes: order.notes,
         cancelReason: order.cancelReason,
         createdAt: order.createdAt,
@@ -589,6 +600,11 @@ router.patch('/orders/:orderId/status', authenticate, async (req: Request, res: 
 
     if (existingOrder.status === 'cancelled') {
       return res.status(400).json({ error: 'Cette commande est déjà annulée' });
+    }
+
+    // Le produit de cette commande a déjà été reversé au vendeur : l'annuler fausserait les comptes
+    if (status === 'cancelled' && existingOrder.payoutId) {
+      return res.status(400).json({ error: 'Cette commande a déjà été reversée au vendeur : annulation impossible' });
     }
 
     // La commande n'avance qu'une fois le paiement Mobile Money confirmé

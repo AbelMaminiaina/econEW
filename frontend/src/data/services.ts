@@ -45,6 +45,7 @@ Chaque commande est accompagnée d'un suivi de statut consultable dans "Mes comm
 
 **À savoir :**
 - Un seul paiement couvre toutes les commandes d'un même panier, même de plusieurs vendeurs
+- Une commande non payée sous 48 h est annulée automatiquement : le stock est alors libéré pour les autres clients
 - Si un paiement ne peut pas être validé, vous en connaissez le motif et pouvez saisir une nouvelle référence
 - Suivez l'état de votre paiement à tout moment dans « Suivi de commande »
 - Le paiement par carte bancaire n'est pas encore disponible`,

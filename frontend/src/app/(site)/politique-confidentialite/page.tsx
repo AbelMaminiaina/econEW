@@ -24,9 +24,9 @@ export default function PolitiqueConfidentialitePage() {
           <p>
             Le responsable du traitement des données est :<br />
             <strong>Ferme du Vardier</strong><br />
-            LE 187, Ambohitsoa Ambavatonelina, Madagascar<br />
-            Email : fermeduvardier@gmail.com<br />
-            Téléphone : 038 01 001 01
+            {CONTACT_ADDRESS_INLINE}<br />
+            Email : {CONTACT.email}<br />
+            Téléphone : {CONTACT.phones.map((p) => p.display).join(' / ')}
           </p>
 
           <h2>2. Données collectées</h2>
@@ -92,7 +92,7 @@ export default function PolitiqueConfidentialitePage() {
             <li><strong>Droit de retrait du consentement :</strong> retirer votre consentement à tout moment</li>
           </ul>
           <p>
-            Pour exercer ces droits, contactez-nous à : fermeduvardier@gmail.com
+            Pour exercer ces droits, contactez-nous à : {CONTACT.email}
           </p>
 
           <h2>8. Cookies</h2>
@@ -134,3 +134,4 @@ export default function PolitiqueConfidentialitePage() {
     </div>
   );
 }
+import { CONTACT, CONTACT_ADDRESS_INLINE } from '@/lib/contact';

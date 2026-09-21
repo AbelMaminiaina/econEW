@@ -1,5 +1,6 @@
 'use client';
 
+import { CONTACT } from '@/lib/contact';
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -10,7 +11,7 @@ import { useCategories } from '@/hooks/useCategories';
 import { useCompanyAccess } from '@/hooks/useCompanyAccess';
 import { formatPrice, resolveUnitPrice } from '@/lib/utils';
 
-const CONTACT_EMAIL = 'contact@all.mg';
+const CONTACT_EMAIL: string = CONTACT.email;
 
 const NAV = [
   { name: 'Accueil', href: '/' },

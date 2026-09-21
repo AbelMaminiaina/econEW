@@ -1,12 +1,13 @@
 'use client';
 
-import React, { Suspense } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { PageHeader } from '@/components/electro/PageHeader';
 import { PaymentPanel } from '@/components/electro/PaymentPanel';
 import { useToast } from '@/components/electro/Toast';
+import { GUEST_EMAIL_KEY } from '@/hooks/usePayment';
 
 function ConfirmationContent() {
   const searchParams = useSearchParams();
@@ -14,7 +15,19 @@ function ConfirmationContent() {
   // Une commande par vendeur : les numéros sont séparés par des virgules
   const orderNumbers = (searchParams.get('order') || 'N/A').split(',').filter(Boolean);
   // Commande sans compte : l'e-mail saisi sert, avec le numéro, à suivre la commande
-  const guestEmail = searchParams.get('guest');
+  // Au retour de la page de paiement d'un opérateur (?paiement=retour), l'adresse ne contient pas l'e-mail : le
+  // navigateur l'a gardé le temps de l'aller-retour.
+  const returningFromOperator = searchParams.get('paiement') !== null;
+  const [rememberedEmail, setRememberedEmail] = useState<string | null>(null);
+  useEffect(() => {
+    if (!returningFromOperator) return;
+    try {
+      setRememberedEmail(sessionStorage.getItem(GUEST_EMAIL_KEY));
+    } catch {
+      // stockage indisponible : le visiteur peut retrouver sa commande avec le suivi
+    }
+  }, [returningFromOperator]);
+  const guestEmail = searchParams.get('guest') ?? rememberedEmail;
   const { data: session, status: authStatus } = useSession();
   // Le paiement se règle avec l'identité de l'acheteur : session connectée ou e-mail du visiteur
   const identityReady = Boolean(guestEmail) || authStatus !== 'loading';

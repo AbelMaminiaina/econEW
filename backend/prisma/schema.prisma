@@ -74,6 +74,28 @@ enum PaymentStatus {
   rejected
 }
 
+// Tentative de paiement automatique via l'API d'un opérateur (MVola, Orange Money, Airtel Money) : le client
+// confirme la demande sur son téléphone (MVola, Airtel) ou sur la page de paiement de l'opérateur (Orange Money),
+// et le site vérifie le résultat auprès de l'opérateur.
+//  pending   = demande envoyée, en attente de la confirmation du client
+//  completed = payé et vérifié : les commandes sont passées en « payées »
+//  failed    = refusé, expiré ou erreur : le client peut réessayer
+//  review    = l'opérateur dit « payé » mais le montant ne correspond pas : à vérifier par un administrateur
+enum PaymentAttemptStatus {
+  pending
+  completed
+  failed
+  review
+}
+
+// Moyen utilisé pour reverser au vendeur le produit de ses ventes (moins la commission de la plateforme)
+enum PayoutMethod {
+  mvola
+  orange_money
+  airtel_money
+  bank_transfer
+}
+
 // Conditions de paiement différé accordées à une entreprise (historique : le paiement différé n'existe plus)
 enum PaymentTerms {
   net_30
@@ -101,12 +123,21 @@ model Company {
   contactPhone     String?
   rejectionReason  String?
 
+  // Commission de la plateforme : pourcentage du sous-total de chaque commande du vendeur.
+  // null = taux par défaut de la plateforme (variable d'environnement PLATFORM_COMMISSION_RATE).
+  commissionRate    Float?
+  // Où la plateforme reverse l'argent du vendeur (renseigné par le vendeur)
+  payoutMethod      PayoutMethod?
+  payoutNumber      String?
+  payoutAccountName String?
+
   users            User[]
   addresses        Address[]
   orders           Order[]   @relation("BuyerOrders")
   sellerOrders     Order[]   @relation("SellerOrders")
   products         Product[] @relation("SellerProducts")
   invoices         Invoice[]
+  payouts          Payout[]  @relation("SellerPayouts")
 
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
@@ -324,6 +355,17 @@ model Order {
   shippingCost   Int            // Prix en Ariary
   total          Int            // Prix en Ariary
 
+  // Commission de la plateforme, figée à la confirmation du paiement (commandes de vendeurs uniquement) :
+  // commissionAmount = subtotal x taux ; sellerAmount = total - commissionAmount (le vendeur livre, il
+  // reçoit donc aussi les frais de livraison). payoutId renseigné une fois l'argent reversé.
+  commissionRate   Float?
+  commissionAmount Int?
+  sellerAmount     Int?
+  payoutId         String?
+  payout           Payout?        @relation(fields: [payoutId], references: [id])
+
+  paymentAttempts  PaymentAttempt[]
+
   paymentTerms   PaymentTerms?  // Conditions de paiement figées au moment de la commande
   dueDate        DateTime?      // Échéance de paiement (facturation différée)
 
@@ -341,7 +383,57 @@ model Order {
   @@index([guestEmail])
   @@index([paymentStatus])
   @@index([paymentReference])
+  @@index([payoutId])
   @@map("orders")
+}
+
+// Reversement d'un vendeur : la plateforme a envoyé `amount` Ar au vendeur pour `ordersCount` commandes
+// payées et livrées (`commissionTotal` = ce qu'elle a retenu). `reference` = transaction de la plateforme.
+model Payout {
+  id              String       @id @default(uuid())
+  sellerId        String
+  seller          Company      @relation("SellerPayouts", fields: [sellerId], references: [id])
+  amount          Int
+  commissionTotal Int
+  ordersCount     Int
+  method          PayoutMethod
+  reference       String
+  note            String?
+  paidByUserId    String?
+  paidAt          DateTime     @default(now())
+
+  orders          Order[]
+
+  createdAt       DateTime     @default(now())
+
+  @@index([sellerId])
+  @@map("payouts")
+}
+
+// Une tentative de paiement automatique porte sur TOUT le panier (checkoutGroup) : `amount` est la somme des
+// commandes encore à payer au moment de la demande. `orderId` = commande de référence du panier.
+model PaymentAttempt {
+  id                  String               @id @default(uuid())
+  provider            String               // 'mvola' | 'orange_money' | 'airtel_money'
+  orderId             String
+  order               Order                @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  checkoutGroup       String?
+  amount              Int
+  payerPhone          String               // numéro du client (vide pour Orange Money : il le saisit chez l'opérateur)
+  status              PaymentAttemptStatus @default(pending)
+  serverCorrelationId String?              @unique // identifiant de suivi chez l'opérateur (MVola, Airtel) ou pay_token (Orange)
+  transactionId       String?              // identifiant de la transaction chez l'opérateur (une fois payée)
+  paymentUrl          String?              // page de paiement de l'opérateur où envoyer le client (Orange Money)
+  notifToken          String?              @unique // jeton de notification de l'opérateur (Orange Money)
+  providerStatus      String?
+  failureReason       String?
+
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@index([status])
+  @@index([orderId])
+  @@map("payment_attempts")
 }
 
 // Items de commande

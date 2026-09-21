@@ -1,5 +1,6 @@
 'use client';
 
+import { CONTACT, CONTACT_ADDRESS_LINES, CONTACT_MAILTO } from '@/lib/contact';
 import React, { useState } from 'react';
 import Link from 'next/link';
 import {
@@ -58,14 +59,14 @@ export function Footer() {
     {
       icon: MapPin,
       title: 'Adresse',
-      content: <>LE 187<br />Ambohitsoa Ambavatonelina, Madagascar</>,
+      content: <>{CONTACT_ADDRESS_LINES[0]}<br />{CONTACT_ADDRESS_LINES[1]}</>,
     },
     {
       icon: Mail,
       title: 'Écrivez-nous',
       content: (
-        <a href="mailto:contact@all.mg" className="transition-colors hover:text-electro-secondary">
-          contact@all.mg
+        <a href={CONTACT_MAILTO} className="transition-colors hover:text-electro-secondary">
+          {CONTACT.email}
         </a>
       ),
     },

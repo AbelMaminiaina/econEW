@@ -1,4 +1,5 @@
 import type { PaymentMethod } from '@prisma/client';
+import { getAutomaticOperator } from './operators.js';
 
 // Moyens de paiement Mobile Money : le client envoie le montant au numéro marchand de la plateforme
 // puis saisit la référence de la transaction, qu'un administrateur vérifie.
@@ -23,6 +24,8 @@ export interface PaymentMethodInfo {
   label: string;
   number: string;
   accountName: string;
+  /** Paiement instantané par l'API de l'opérateur disponible (sinon : envoi manuel + référence) */
+  automatic: boolean;
 }
 
 export function paymentAccountName(): string {
@@ -34,7 +37,7 @@ export function getPaymentMethods(): PaymentMethodInfo[] {
   return PAYMENT_METHOD_IDS.flatMap((id) => {
     const number = process.env[METHODS[id].envKey]?.trim();
     return number
-      ? [{ id, label: METHODS[id].label, number, accountName: paymentAccountName() }]
+      ? [{ id, label: METHODS[id].label, number, accountName: paymentAccountName(), automatic: getAutomaticOperator(id) !== null }]
       : [];
   });
 }

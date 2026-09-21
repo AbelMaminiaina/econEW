@@ -5,7 +5,15 @@ import prisma from '../lib/prisma.js';
 import { authenticate, optionalAuthenticate, requirePlatformAdmin } from '../middleware/auth.js';
 import { rateLimit } from '../lib/rateLimit.js';
 import { getPaymentMethod, getPaymentMethods, paymentMethodLabel } from '../lib/payments.js';
-import { sendPaymentConfirmedEmail, sendPaymentRejectedEmail } from '../services/emailService.js';
+import { orderExpiresAt } from '../lib/orderExpiry.js';
+import { expireUnpaidOrders } from '../services/orderExpiry.js';
+import { sendPaymentRejectedEmail } from '../services/emailService.js';
+import { canAccess, loadGroup, type GroupOrder } from '../lib/paymentGroup.js';
+import { buyerOf, markOrdersPaid } from '../services/paymentSettlement.js';
+import { getAutomaticOperator, getOperator, isApiReference } from '../lib/operators.js';
+import { reconcileAttempt } from '../services/mobileMoneyPayments.js';
+import { isDemoPayments } from '../services/demoPayments.js';
+import { presentedAttempt } from '../lib/attemptPresentation.js';
 
 const router = Router();
 
@@ -35,34 +43,6 @@ const rejectSchema = z.object({
   reason: z.string().trim().min(3, 'Motif requis').max(300),
 });
 
-type GroupOrder = Order & { seller?: { name: string } | null };
-
-// Toutes les commandes du panier auquel appartient la commande donnée
-async function loadGroup(orderNumber: string): Promise<GroupOrder[] | null> {
-  const order = await prisma.order.findUnique({
-    where: { orderNumber },
-    include: { seller: { select: { name: true } } },
-  });
-  if (!order) return null;
-  if (!order.checkoutGroup) return [order];
-  return prisma.order.findMany({
-    where: { checkoutGroup: order.checkoutGroup },
-    include: { seller: { select: { name: true } } },
-    orderBy: { createdAt: 'asc' },
-  });
-}
-
-// Propriétaire (compte connecté) ou visiteur ayant passé la commande (e-mail saisi à la commande)
-function canAccess(req: Request, order: Order, email?: string): boolean {
-  if (req.user) {
-    if (req.user.role === 'platform_admin') return true;
-    if (order.userId && order.userId === req.user.userId) return true;
-    if (order.companyId && order.companyId === req.user.companyId) return true;
-    return false;
-  }
-  return !!email && !!order.guestEmail && order.guestEmail.toLowerCase() === email.toLowerCase();
-}
-
 function aggregateStatus(orders: Order[]): PaymentStatus {
   const active = orders.filter((o) => o.status !== 'cancelled');
   if (active.length === 0) return 'awaiting';
@@ -76,8 +56,27 @@ function summarize(orders: GroupOrder[]) {
   const active = orders.filter((o) => o.status !== 'cancelled');
   const reference = orders.find((o) => o.paymentReference) ?? orders[0];
   const method = getPaymentMethod(orders[0].paymentMethod);
+  const operator = getAutomaticOperator(orders[0].paymentMethod);
+  const instant = operator && aggregateStatus(orders) !== 'paid' && active.length > 0 ? operator : null;
+  // Date limite : la plus proche parmi les commandes encore à payer (null si payé, à vérifier ou désactivé)
+  const deadlines = orders.flatMap((o) => { const d = orderExpiresAt(o); return d ? [d.getTime()] : []; });
   return {
     paymentStatus: aggregateStatus(orders),
+    // Paiement instantané par l'API de l'opérateur proposé (opérateur du panier configuré et panier encore à payer)
+    automatic: instant !== null,
+    // Paiement de démonstration (opérateurs simulés, aucun argent réel) : l'interface l'annonce
+    demo: isDemoPayments(),
+    // Comment se déroule ce paiement instantané : demande sur le téléphone (push) ou page de l'opérateur (redirect)
+    instant: instant && {
+      provider: instant.id,
+      label: instant.label,
+      flow: instant.flow,
+      phonePrefixes: instant.phonePrefixes,
+      phonePlaceholder: instant.phonePlaceholder,
+    },
+    expiresAt: deadlines.length > 0 ? new Date(Math.min(...deadlines)) : null,
+    // Motif d'annulation (ex. « Non payée dans le délai imparti ») quand toutes les commandes sont annulées
+    cancelReason: active.length === 0 ? orders.find((o) => o.cancelReason)?.cancelReason ?? null : null,
     method: orders[0].paymentMethod,
     methodLabel: paymentMethodLabel(orders[0].paymentMethod),
     // Numéro marchand toujours issu de la configuration courante
@@ -99,17 +98,6 @@ function summarize(orders: GroupOrder[]) {
   };
 }
 
-function buyerOf(order: Order & {
-  company?: { name: string; contactEmail: string; contactPhone?: string | null } | null;
-  user?: { firstName: string; lastName: string; email: string; phone?: string | null } | null;
-}) {
-  return {
-    name: order.company?.name ?? (order.user ? `${order.user.firstName} ${order.user.lastName}` : order.guestName ?? 'N/A'),
-    email: order.company?.contactEmail ?? order.user?.email ?? order.guestEmail ?? null,
-    phone: order.company?.contactPhone ?? order.user?.phone ?? order.guestPhone ?? null,
-  };
-}
-
 // Moyens de paiement proposés (numéros marchands)
 router.get('/methods', (_req: Request, res: Response) => {
   res.json({ methods: getPaymentMethods() });
@@ -127,7 +115,33 @@ router.get('/status', optionalAuthenticate, paymentLimiter, async (req: Request,
     if (!orders || !canAccess(req, orders[0], email)) {
       return res.status(404).json({ error: 'Aucune commande ne correspond à ces informations' });
     }
-    res.json(summarize(orders));
+    let group = orders;
+    let attempt = await prisma.paymentAttempt.findFirst({
+      where: { orderId: { in: orders.map((o) => o.id) } },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (attempt?.status === 'pending') {
+      const fresh = await reconcileAttempt(attempt.id);
+      if (fresh && fresh.status !== 'pending') {
+        attempt = fresh;
+        group = (await loadGroup(orderNumber)) ?? orders; // la vérification a pu régler les commandes
+      }
+    }
+    res.json({
+      ...summarize(group),
+      attempt: attempt
+        ? (({ id, provider, status, failureReason, payerPhone, paymentUrl, createdAt }) => ({
+            id,
+            provider,
+            status,
+            failureReason,
+            payerPhone,
+            // Page de paiement de l'opérateur (Orange Money) : seulement tant que la demande est en cours
+            paymentUrl: status === 'pending' ? paymentUrl : null,
+            createdAt,
+          }))(presentedAttempt(attempt, group))
+        : null,
+    });
   } catch (error) {
     console.error('Error fetching payment status:', error);
     res.status(500).json({ error: 'Failed to fetch payment status' });
@@ -150,6 +164,20 @@ router.post('/submit', optionalAuthenticate, paymentLimiter, async (req: Request
     }
     if (active.every((o) => o.paymentStatus === 'paid')) {
       return res.status(409).json({ success: false, error: 'Cette commande est déjà payée' });
+    }
+    // Une demande de paiement automatique est en cours : une référence manuelle l'écraserait et brouillerait la vérification
+    const inProgress = await prisma.paymentAttempt.findFirst({
+      where: { orderId: { in: orders.map((o) => o.id) }, status: 'pending' },
+      select: { id: true, provider: true },
+    });
+    if (inProgress) {
+      return res.status(409).json({
+        success: false,
+        error:
+          getOperator(inProgress.provider)?.flow === 'redirect'
+            ? `Un paiement ${getOperator(inProgress.provider)?.label} est en cours : terminez-le sur la page de l’opérateur (ou attendez son expiration) avant d’envoyer une référence.`
+            : `Un paiement ${getOperator(inProgress.provider)?.label ?? 'Mobile Money'} est en cours : confirmez-le sur votre téléphone (ou attendez son expiration) avant d’envoyer une référence.`,
+      });
     }
 
     // Une même transaction ne peut pas justifier deux paniers différents
@@ -222,13 +250,24 @@ router.get('/admin', authenticate, requirePlatformAdmin, async (req: Request, re
       groups.set(key, [...(groups.get(key) ?? []), order]);
     }
 
+    const attempts =
+      (await prisma.paymentAttempt.findMany({
+        where: { orderId: { in: orders.map((o) => o.id) } },
+        orderBy: { createdAt: 'desc' },
+      })) ?? [];
+
     res.json({
       payments: [...groups.values()].map((group) => {
         const first = group[0];
+        const ids = new Set(group.map((o) => o.id));
+        const attempt = attempts.find((a) => ids.has(a.orderId));
         return {
           id: first.id,
           buyer: buyerOf(first),
           ...summarize(group),
+          // Paiement lancé par l'API d'un opérateur (et non par une référence saisie à la main)
+          automatic: group.some((o) => isApiReference(o.paymentReference)),
+          attempt: attempt ? { status: attempt.status, failureReason: attempt.failureReason } : null,
           // Total de ce qui est affiché dans le groupe (les commandes filtrées uniquement)
           totalAmount: group.reduce((sum, o) => sum + o.total, 0),
           createdAt: first.createdAt,
@@ -253,6 +292,17 @@ async function loadGroupForAdmin(orderId: string) {
   });
 }
 
+// Admin : lance tout de suite l'annulation des commandes non payées dont le délai est dépassé
+// (elle tourne aussi automatiquement toutes les 10 minutes)
+router.post('/admin/expire-unpaid', authenticate, requirePlatformAdmin, async (_req: Request, res: Response) => {
+  try {
+    res.json({ success: true, ...(await expireUnpaidOrders()) });
+  } catch (error) {
+    console.error('Error expiring unpaid orders:', error);
+    res.status(500).json({ error: 'Failed to expire unpaid orders' });
+  }
+});
+
 // Admin : le paiement est arrivé -> les commandes du panier passent en traitement
 router.patch('/admin/:orderId/confirm', authenticate, requirePlatformAdmin, async (req: Request, res: Response) => {
   try {
@@ -264,29 +314,8 @@ router.patch('/admin/:orderId/confirm', authenticate, requirePlatformAdmin, asyn
       return res.status(409).json({ error: 'Aucun paiement à confirmer pour cette commande' });
     }
 
-    const now = new Date();
-    for (const order of toConfirm) {
-      await prisma.order.update({
-        where: { id: order.id },
-        data: {
-          paymentStatus: 'paid',
-          paidAt: now,
-          paymentRejectionReason: null,
-          // Stock déjà réservé : la commande peut être préparée immédiatement
-          ...(order.status === 'pending' && order.stockReserved ? { status: 'processing' } : {}),
-        },
-      });
-    }
-
-    const buyer = buyerOf(orders[0]);
-    if (buyer.email) {
-      sendPaymentConfirmedEmail({
-        orderNumbers: toConfirm.map((o) => o.orderNumber),
-        companyName: buyer.name,
-        contactEmail: buyer.email,
-        totalAmount: toConfirm.reduce((sum, o) => sum + o.total, 0),
-      }).catch((err) => console.error('Failed to send payment confirmation email:', err));
-    }
+    // Règlement partagé avec la confirmation automatique (commission, démarrage de la commande, e-mail)
+    await markOrdersPaid({ orders: toConfirm, buyerOrder: orders[0] });
 
     res.json({ success: true, confirmed: toConfirm.length });
   } catch (error) {

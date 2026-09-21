@@ -146,6 +146,28 @@ export default function AdminPaymentsPage() {
                     {payment.buyer.email && ` · ${payment.buyer.email}`}
                     {payment.buyer.phone && ` · ${payment.buyer.phone}`}
                   </p>
+                  {payment.automatic && (
+                    <p
+                      className={`mt-2 rounded-lg p-2 text-sm ${
+                        payment.attempt?.status === 'review'
+                          ? 'bg-amber-50 text-amber-800'
+                          : payment.attempt?.status === 'pending'
+                            ? 'bg-blue-50 text-blue-800'
+                            : 'bg-green-50 text-green-800'
+                      }`}
+                    >
+                      {payment.attempt?.status === 'review' ? (
+                        <>
+                          <strong>Paiement {payment.methodLabel ?? 'Mobile Money'} à vérifier :</strong> {payment.attempt.failureReason ?? 'écart détecté'}.
+                          Contrôlez votre compte {payment.methodLabel ?? 'Mobile Money'} puis confirmez ou refusez.
+                        </>
+                      ) : payment.attempt?.status === 'pending' ? (
+                        <>Paiement {payment.methodLabel ?? 'Mobile Money'} lancé : en attente de la confirmation du client (vérifié automatiquement).</>
+                      ) : (
+                        <>Paiement lancé par {payment.methodLabel ?? 'Mobile Money'} (confirmation automatique).</>
+                      )}
+                    </p>
+                  )}
                   {payment.reference ? (
                     <p className="mt-2 rounded-lg bg-warm-50 p-2 text-sm text-warm-800">
                       Référence : <strong className="font-mono">{payment.reference}</strong>

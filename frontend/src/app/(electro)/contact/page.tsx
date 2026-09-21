@@ -1,5 +1,6 @@
 'use client';
 
+import { CONTACT, CONTACT_ADDRESS_LINES, CONTACT_MAILTO, CONTACT_MAP_EMBED_URL, CONTACT_PHONE_LINKS } from '@/lib/contact';
 import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -30,9 +31,9 @@ const subjectOptions = [
 ];
 
 const INFO_CARDS = [
-  { icon: 'fa-map-marker-alt', title: 'Adresse', lines: ['LE 187', 'Ambohitsoa Ambavatonelina, Madagascar'] },
-  { icon: 'fa-envelope', title: 'Email', lines: ['contact@all.mg'], href: 'mailto:contact@all.mg' },
-  { icon: 'fa-phone-alt', title: 'Téléphone', lines: ['038 01 001 01'], href: 'tel:+261380100101' },
+  { icon: 'fa-map-marker-alt', title: 'Adresse', lines: [...CONTACT_ADDRESS_LINES] },
+  { icon: 'fa-envelope', title: 'Email', lines: [CONTACT.email], href: CONTACT_MAILTO },
+  { icon: 'fa-phone-alt', title: 'Téléphone', lines: CONTACT.phones.map((p) => p.display), href: CONTACT_PHONE_LINKS[0]?.href },
   { icon: 'fa-clock', title: 'Horaires', lines: ['Lun - Ven : 9h - 18h', 'Sam : 9h - 12h · Dim : fermé'] },
 ];
 
@@ -97,7 +98,7 @@ export default function ContactPage() {
                     title="Plan d'accès"
                     className="w-100 h-100 rounded"
                     style={{ minHeight: 300, border: 0 }}
-                    src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3774.123456789!2d47.4234567!3d-19.3456789!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zMTnCsDIwJzQ0LjQiUyA0N8KwMjUnMjQuNCJF!5e0!3m2!1sfr!2smg!4v1234567890"
+                    src={CONTACT_MAP_EMBED_URL}
                     allowFullScreen
                     loading="lazy"
                     referrerPolicy="no-referrer-when-downgrade"

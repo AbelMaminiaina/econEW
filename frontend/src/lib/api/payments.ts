@@ -12,10 +12,51 @@ export interface PaymentMethodInfo {
   label: string;
   number: string;
   accountName: string;
+  /** Paiement instantané par l'API de l'opérateur (sinon : envoi manuel + référence) */
+  automatic: boolean;
+}
+
+// Demande de paiement automatique (MVola, Orange Money, Airtel Money) : le site vérifie le résultat auprès de l'opérateur
+export type PaymentAttemptStatus = 'pending' | 'completed' | 'failed' | 'review';
+
+export interface PaymentAttempt {
+  id: string;
+  provider: PaymentMethodId;
+  status: PaymentAttemptStatus;
+  failureReason: string | null;
+  /** Numéro du client (vide pour Orange Money : il le saisit sur la page d'Orange) */
+  payerPhone: string;
+  /** Page de paiement de l'opérateur (Orange Money), tant que la demande est en cours */
+  paymentUrl: string | null;
+  createdAt: string;
+}
+
+// Comment se déroule le paiement instantané d'un panier :
+//  - push : le client donne son numéro et confirme la demande sur son téléphone (MVola, Airtel Money) ;
+//  - redirect : le client est envoyé sur la page de paiement de l'opérateur (Orange Money).
+export interface InstantPayment {
+  provider: PaymentMethodId;
+  label: string;
+  flow: 'push' | 'redirect';
+  /** Préfixes de numéro acceptés, pour l'affichage (« 034 ou 038 ») */
+  phonePrefixes: string;
+  phonePlaceholder: string;
 }
 
 export interface PaymentSummary {
   paymentStatus: PaymentStatus;
+  /** Paiement instantané proposé pour ce panier (opérateur configuré côté serveur) */
+  automatic: boolean;
+  /** Paiement de démonstration : opérateurs simulés, aucun argent réel n'est débité */
+  demo: boolean;
+  /** Fonctionnement du paiement instantané (null quand il n'est pas proposé) */
+  instant: InstantPayment | null;
+  /** Dernière demande de paiement automatique (null pour un paiement purement manuel) */
+  attempt: PaymentAttempt | null;
+  /** Date limite de paiement (annulation automatique passé ce délai) ; null si sans objet */
+  expiresAt: string | null;
+  /** Motif quand la commande a été annulée (ex. non payée dans le délai) */
+  cancelReason: string | null;
   method: PaymentMethodId | null;
   methodLabel: string | null;
   number: string | null;
@@ -37,6 +78,8 @@ export interface PaymentSummary {
 
 export interface AdminPayment extends PaymentSummary {
   id: string;
+  /** Le paiement a été lancé par l'API de l'opérateur (référence « MVOLA:… », « ORANGE_MONEY:… », « AIRTEL_MONEY:… ») */
+  automatic: boolean;
   buyer: { name: string; email: string | null; phone: string | null };
   createdAt: string;
 }
@@ -68,6 +111,24 @@ export async function submitPayment(
   token?: string
 ): Promise<{ success: boolean; message: string }> {
   return fetchAPI('/payments/submit', { method: 'POST', body: JSON.stringify(data), token });
+}
+
+// Lance le paiement instantané avec l'opérateur choisi à la commande : envoie la demande sur le téléphone du client
+// (MVola, Airtel Money : `payerPhone` requis) ou renvoie la page de paiement d'Orange Money (`attempt.paymentUrl`)
+export async function startAutoPayment(
+  data: { orderNumber: string; payerPhone?: string; email?: string },
+  token?: string
+): Promise<{ success: boolean; reused: boolean; attempt: PaymentAttempt; message: string }> {
+  return fetchAPI('/payments/auto/initiate', { method: 'POST', body: JSON.stringify(data), token });
+}
+
+// Suit une demande : le serveur interroge l'opérateur à chaque appel
+export async function getAutoAttempt(
+  attemptId: string,
+  opts: { email?: string; token?: string } = {}
+): Promise<PaymentAttempt> {
+  const query = opts.email ? `?email=${encodeURIComponent(opts.email)}` : '';
+  return fetchAPI(`/payments/auto/attempt/${encodeURIComponent(attemptId)}${query}`, { token: opts.token });
 }
 
 export async function getAdminPayments(

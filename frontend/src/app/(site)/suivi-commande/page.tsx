@@ -1,5 +1,6 @@
 'use client';
 
+import { CONTACT_PHONE_LINKS } from '@/lib/contact';
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -443,9 +444,14 @@ export default function MesCommandesPage() {
                   <div className="flex items-center gap-2 text-warm-700">
                     <Phone className="h-4 w-4" />
                     <span>Une question ? </span>
-                    <a href="tel:+261380100101" className="font-medium text-prairie-600 hover:underline">
-                      038 01 001 01
-                    </a>
+                    {CONTACT_PHONE_LINKS.map((phone, index) => (
+                      <React.Fragment key={phone.href}>
+                        {index > 0 && <span>·</span>}
+                        <a href={phone.href} className="font-medium text-prairie-600 hover:underline">
+                          {phone.display}
+                        </a>
+                      </React.Fragment>
+                    ))}
                   </div>
                 </div>
               </div>
